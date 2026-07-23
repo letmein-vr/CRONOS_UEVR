@@ -27,8 +27,3 @@
 
 ![Cronos VR](https://raw.githubusercontent.com/letmein-vr/CRONOS_UEVR/main/screenshots/cronosvrcontrols.png)
 
-## ⚠️ Known Issues ⚠️
-
-* **Cutscenes/Interactions**: The mod switches to original 3rd person in these sequences, and then back to 1st person VR after they are over. This includes things like mantling, ducking under or mantling over things.
-
-You will have to MELEE ATTACK after these events to bring up your weapon!
