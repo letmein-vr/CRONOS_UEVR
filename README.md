@@ -18,6 +18,7 @@
 * **VR Hands**: VR rendered hands arms with grip animations for equipped weapons, attached to left and right motion controllers.
 * **6DOF Weapons**: The Traveler's current weapon is tracked and attached to the right controller, with VR hands following accordingly.
 * **2-Handing Weapons**: Hold the Left Hand to the weapon barrel or handle to 2-hand weapons! Toggle this on or off in the Cronos VR config menu.
+* **Flashlight Toggle**: Hold you right hand to the back of the flashlight on your left arm, and press right grip to toggle the light on/off. This overrides the game's logic for this.
 * **UI HUD Follow Mode**: UI HUD follows HMD (head).
 * **Cinematic Handling**: Automatic detection of cinematic sequences. Object hooks are disabled and VR aim method switches during cutscenes to preserve the original cinematic presentation, then restores on exit. Some bugs!
 
