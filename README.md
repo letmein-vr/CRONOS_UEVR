@@ -25,6 +25,7 @@
 
 ## Controls
 
+![Cronos VR](https://raw.githubusercontent.com/letmein-vr/CRONOS_UEVR/main/screenshots/cronosvrcontrols.png)
 
 ## ⚠️ Known Issues ⚠️
 
