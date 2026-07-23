@@ -8,7 +8,7 @@
 ## Credits
 * **Praydog**: For creating [UEVR](https://github.com/praydog/UEVR) and making these mods possible
 * **jbusfield**: For the incredible helper libs framework (https://github.com/jbusfield/uevrlib)
-* **DJ**: For creating the weapon trace for this game
+* **DJ**: For creating the weapon trace for this game, and the visible crosshair code
 * **Keyser-Soze**: For finding some of the original meshes to hook, and for all the testing help! 
 
 ---
