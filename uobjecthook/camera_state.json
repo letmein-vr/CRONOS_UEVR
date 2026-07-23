@@ -1,0 +1,13 @@
+{
+    "offset": {
+        "x": -16.100000381469727,
+        "y": 51.900001525878906,
+        "z": 174.48800659179688
+    },
+    "path": [
+        "Acknowledged Pawn",
+        "Components",
+        "SkeletalMeshComponent CharacterMesh0"
+    ],
+    "type": "camera"
+}

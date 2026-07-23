@@ -1,0 +1,56 @@
+{
+    "accessories": {
+        "MultiModeGun_C_RootComponent": {
+            "c4aeebab-9864-4fb5-bd92-1d12759497ba": {
+                "label": "Left Hand",
+                "markers": [
+                    {
+                        "activation_distance": 7.5,
+                        "activation_hand": 2,
+                        "attach_type": 2,
+                        "end_time": 0.0,
+                        "grip_animation": "twohand",
+                        "grip_priority": 1,
+                        "location": [
+                            3.0,
+                            2.299999952316284,
+                            -2.5
+                        ],
+                        "rotation": [
+                            38.0,
+                            19.700000762939453,
+                            0.0
+                        ],
+                        "socket_name": "",
+                        "start_time": 0.0
+                    }
+                ]
+            },
+            "de9f2f9f-f9a6-4685-a68e-7710da1400d4": {
+                "label": "New Accessory",
+                "markers": [
+                    {
+                        "activation_distance": 0.0,
+                        "activation_hand": 1,
+                        "attach_type": 0,
+                        "end_time": 0.0,
+                        "grip_animation": "",
+                        "grip_priority": 1,
+                        "location": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "rotation": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "socket_name": "",
+                        "start_time": 0.0
+                    }
+                ]
+            }
+        }
+    }
+}

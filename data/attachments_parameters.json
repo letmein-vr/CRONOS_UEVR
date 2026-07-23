@@ -1,0 +1,76 @@
+{
+    "_note": "Attachment offsets managed by attachments.lua. The parent/child/id fields will be auto-populated on first game run when the gun and flashlight are discovered. Location values are seeded from the original UObjectHook mc_state offsets. Tune Rotation live via the Attachments Config Dev panel in the UEVR overlay.",
+    "attachmentOffsets": [
+        {
+            "animation": "multimode_gun",
+            "any_child": true,
+            "any_parent": false,
+            "child": "RootComponent",
+            "id": "MultiModeGun_C_RootComponent",
+            "location": [
+                0.0,
+                -0.30000001192092896,
+                2.5
+            ],
+            "melee": false,
+            "parent": "MultiModeGun_C",
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                1.000000209287757,
+                0.9999998629746728,
+                0.9999995735757754
+            ],
+            "scoped": false,
+            "two_handed": false,
+            "use_laser": false
+        },
+        {
+            "animation": "",
+            "any_child": false,
+            "any_parent": false,
+            "child": "SK_Flashlight_02",
+            "id": "CronosCharacterPlay_BP_C_SK_Flashlight_02",
+            "location": [
+                46.29999923706055,
+                13.300000190734863,
+                -31.0
+            ],
+            "melee": false,
+            "parent": "CronosCharacterPlay_BP_C",
+            "rotation": [
+                160.3000030517578,
+                99.80000305175781,
+                149.8000030517578
+            ],
+            "scale": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "scoped": false,
+            "two_handed": false,
+            "use_laser": false
+        }
+    ],
+    "baseOffsets": {
+        "location": [
+            0,
+            0,
+            0
+        ],
+        "rotation": [
+            0,
+            0,
+            0
+        ],
+        "scale": [
+            1,
+            1,
+            1
+        ]
+    }
+}

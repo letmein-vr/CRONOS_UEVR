@@ -1,0 +1,16 @@
+r.SceneColorFringeQuality 0
+r.SceneColorFringe.Max 0
+r.DepthOfFieldQuality 0
+r.MotionBlurQuality 0
+r.NT.Lens.Distortion.Intensity 0
+r.NT.Lens.Distortion.Stretch 0
+r.NT.Lens.ChromaticAberration.Intensity 0
+r.NT.DOF.RotationalBokeh 0
+r.NT.DOF.NTBokehTransform 0
+r.FilmGrain 0
+r.MotionBlur.Max 0
+r.DefaultFeature.MotionBlur 0
+r.Tonemapper.GrainQuantization 0
+r.Tonemapper.Quality 0
+r.SSFS 0
+r.Vrs.Enable 0
