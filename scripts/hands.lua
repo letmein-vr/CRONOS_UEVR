@@ -13,6 +13,7 @@ local controllers = require('libs/controllers')
 local attachments = require('libs/attachments')
 local gestures    = require('libs/gestures')
 local configui    = require('libs/configui')
+local reticule    = require('libs/reticule')
 
 uevrUtils.setLogLevel(LogLevel.Debug)
 uevrUtils.setLogToFile(true)
@@ -58,6 +59,7 @@ local flashlightOptions = {
 -- → loads / creates data/attachments_parameters.json
 -- ─────────────────────────────────────────────────────────────────
 attachments.init(true)
+reticule.init(false)
 
 -- ─────────────────────────────────────────────────────────────────
 -- Pawn / mesh helpers
@@ -216,6 +218,13 @@ uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
             end)
         end
     end
+
+    -- ── Reticle: update 3D position ──────────────────────────────────
+    if reticule.exists() then
+        pcall(function()
+            reticule.update(nil, reticule.getTargetLocationFromController(Handed.Right))
+        end)
+    end
 end)
 
 
@@ -265,33 +274,10 @@ local function attachWeaponsToPawnMesh(pawn)
         end)
     end
 
-    -- Flashlight_Mesh → no specific socket needed
-    local fl = uevrUtils.getValid(pawn.Flashlight_Mesh)
-    if fl ~= nil then
-        pcall(function()
-            fl:DetachFromParent(false, false)
-            fl:K2_AttachTo(mesh, uevrUtils.fname_from_string("None"), 0, false)
-        end)
-    end
-
-    -- MultiModeGun root → no specific socket needed
-    local ok, gun = pcall(function()
-        local wpc = pawn.WeaponPlayerComponent
-        if wpc == nil then return nil end
-        wpc = uevrUtils.getValid(wpc)
-        if wpc == nil then return nil end
-        local g = wpc.MultiModeGun
-        if g == nil then return nil end
-        g = uevrUtils.getValid(g)
-        if g == nil then return nil end
-        return uevrUtils.getValid(g.RootComponent)
-    end)
-    if ok and gun then
-        pcall(function()
-            gun:DetachFromParent(false, false)
-            gun:K2_AttachTo(mesh, uevrUtils.fname_from_string("None"), 0, false)
-        end)
-    end
+    -- Flashlight_Mesh and MultiModeGun are native weapons.
+    -- We deliberately DO NOT detach them or re-attach them to "None",
+    -- because that breaks their native animation state machines and 
+    -- causes the game to aggressively hide them.
 end
 
 local function enterCutscene(pawn)
@@ -332,23 +318,31 @@ local function exitCutscene()
 
     local pawn = getPawn()
 
-    -- 1. DetachFromParent every weapon — frees them from pawn.Mesh hierarchy
-    --    so UObjectHook and K2_AttachTo can take them over cleanly.
+    -- 1. Detach VR-only weapons from pawn.Mesh so they can attach to PMCs.
+    --    Native weapons (Gun, Flashlight) are left in their native sockets.
     if pawn ~= nil then
         pcall(function()
             local gun = getGunRoot(pawn)
             if gun ~= nil then
-                gun:DetachFromParent(false, false)
-                -- Restore visibility: pawn.Mesh was hidden with propagation,
-                -- leaving bHiddenInGame=true on all children including the gun.
                 gun:SetVisibility(true, true)
                 gun:SetHiddenInGame(false, true)
+
+                -- The engine hides the MultiModeGun *Actor* during cutscenes/interactions.
+                -- We explicitly unhide it so it's ready when gameplay resumes.
+                local wpc = uevrUtils.getValid(pawn.WeaponPlayerComponent)
+                if wpc ~= nil then
+                    local gunActor = uevrUtils.getValid(wpc.MultiModeGun)
+                    if gunActor ~= nil then
+                        gunActor.bHidden = false
+                        pcall(function() gunActor:call("SetActorHiddenInGame", false) end)
+                        print("[hands] Successfully forced MultiModeGun visible")
+                    end
+                end
             end
         end)
         pcall(function()
             local fl = getFlashlight(pawn)
             if fl ~= nil then
-                fl:DetachFromParent(false, false)
                 fl:SetVisibility(true, true)
                 fl:SetHiddenInGame(false, true)
             end
@@ -358,8 +352,6 @@ local function exitCutscene()
             if ft ~= nil then ft:DetachFromParent(false, false) end
             local hv = uevrUtils.getValid(pawn.HarvesterSK)
             if hv ~= nil then hv:DetachFromParent(false, false) end
-            local flm = uevrUtils.getValid(pawn.Flashlight_Mesh)
-            if flm ~= nil then flm:DetachFromParent(false, false) end
         end)
     end
 
@@ -387,6 +379,28 @@ local function exitCutscene()
             pcall(function()
                 mesh:SetVisibility(false, true)
                 mesh:SetHiddenInGame(true, true)
+                
+                -- The above propagated to all children, hiding the native weapons.
+                -- We must immediately unhide them so they remain visible in VR.
+                local wpc = uevrUtils.getValid(pawn.WeaponPlayerComponent)
+                if wpc ~= nil then
+                    local gunActor = uevrUtils.getValid(wpc.MultiModeGun)
+                    if gunActor ~= nil then
+                        local gunMesh = gunActor.SkeletalMesh
+                        if not gunMesh then gunMesh = gunActor.Mesh end
+                        gunMesh = uevrUtils.getValid(gunMesh)
+                        if gunMesh ~= nil then
+                            gunMesh:SetVisibility(true, true)
+                            gunMesh:SetHiddenInGame(false, true)
+                        end
+                    end
+                end
+                
+                local flm = uevrUtils.getValid(pawn.Flashlight_Mesh)
+                if flm ~= nil then
+                    flm:SetVisibility(true, true)
+                    flm:SetHiddenInGame(false, true)
+                end
             end)
         end
     end
@@ -433,6 +447,34 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
             enterCutscene(getPawn())
         else
             exitCutscene()
+        end
+    end
+
+    -- FORCE WEAPON VISIBILITY AFTER NATIVE GAME TICK
+    if not inCutscene then
+        local pawn = getPawn()
+        if pawn ~= nil then
+            pcall(function()
+                local wpc = uevrUtils.getValid(pawn.WeaponPlayerComponent)
+                if wpc ~= nil then
+                    local gunActor = uevrUtils.getValid(wpc.MultiModeGun)
+                    if gunActor ~= nil then
+                        if gunActor.bHidden then
+                            gunActor.bHidden = false
+                            pcall(function() gunActor:call("SetActorHiddenInGame", false) end)
+                        end
+                        local mesh = gunActor.SkeletalMesh
+                        if not mesh then mesh = gunActor.Mesh end
+                        mesh = uevrUtils.getValid(mesh)
+                        if mesh ~= nil then
+                            if mesh.bHiddenInGame then
+                                mesh:SetHiddenInGame(false, true)
+                            end
+                            mesh:SetVisibility(true, true)
+                        end
+                    end
+                end
+            end)
         end
     end
 end)
@@ -503,18 +545,80 @@ attachWeaponsToHands = function()
 end
 
 -- ─────────────────────────────────────────────────────────────────
--- Hide all weapon reticle (crosshair) widgets
--- CronosWeaponRecticleWidget covers all 8 weapon-specific reticles.
--- SetVisibility(1) = Hidden (not rendered, not hit-tested).
+-- Manage reticles: forces native reticles to 100% opacity and
+-- extracts the active one into the 3D VR world using reticule.lua.
 -- ─────────────────────────────────────────────────────────────────
-local function hideReticles()
-    local widgets = uevrUtils.find_all_of("Class /Script/Cronos.CronosWeaponRecticleWidget", false)
-    if widgets == nil or #widgets == 0 then return false end
-    for _, w in ipairs(widgets) do
-        local valid = uevrUtils.getValid(w)
-        if valid ~= nil and valid.SetVisibility ~= nil then
-            valid:SetVisibility(1) -- ESlateVisibility::Hidden
+local lastActiveWidget = nil
+
+local function manageReticles()
+    local pawn = getPawn()
+    if pawn == nil then return false end
+    
+    local wpc = pawn.WeaponPlayerComponent
+    if wpc ~= nil then
+        -- Check the config toggle
+        if not configui.getValue("enable3DReticle") then
+            -- Destroy 3D reticle if it exists
+            if reticule.exists() then
+                reticule.destroy()
+                lastActiveWidget = nil
+            end
+            -- Old behavior: agressively hide the native 2D crosshairs so they don't stick to the player's face
+            local widgets = uevrUtils.find_all_of("Class /Script/Cronos.CronosWeaponRecticleWidget", false)
+            if widgets ~= nil and #widgets > 0 then
+                for _, w in ipairs(widgets) do
+                    local valid = uevrUtils.getValid(w)
+                    if valid ~= nil and valid.SetVisibility ~= nil then
+                        pcall(function() valid:SetVisibility(1) end) -- ESlateVisibility::Hidden
+                    end
+                end
+            end
+            return true
         end
+
+        -- 1. Force color and opacity to 100% for all reticles
+        local containers = wpc.WeaponModesContainers
+        if containers ~= nil then
+            for _, container in ipairs(containers) do
+                local ok, err = pcall(function()
+                    local retComp = container.ReticleComponent
+                    if retComp ~= nil then
+                        local widget = retComp.ReticleWidget
+                        if widget ~= nil then
+                            -- Use a raw Lua table so UEVR auto-casts it to the exact struct type expected.
+                            -- Crank RGB to 10.0 for HDR brightness so it's stark white in VR.
+                            local color = {R = 10.0, G = 10.0, B = 10.0, A = 1.0}
+                            pcall(function() widget:SetColorAndOpacity(color) end)
+                            pcall(function() widget:SetRenderOpacity(100) end)
+                        end
+                    end
+                end)
+                if not ok then
+                    print("[hands] Error setting reticle color: " .. tostring(err))
+                end
+            end
+        end
+
+        -- 2. Project active reticle into 3D
+        pcall(function()
+            local weapon_mode = wpc:GetWeaponModeContainer()
+            if weapon_mode ~= nil then
+                local activeWidget = weapon_mode:GetReticleWidget()
+                if uevrUtils.getValid(activeWidget) ~= nil then
+                    -- If the weapon switched, the active widget changed. 
+                    -- Destroy the old 3D reticle so it can be recreated.
+                    if activeWidget ~= lastActiveWidget then
+                        reticule.destroy()
+                        lastActiveWidget = activeWidget
+                    end
+
+                    if not reticule.exists() then
+                        local options = { removeFromViewport = true, twoSided = true }
+                        reticule.createFromWidget(activeWidget, options)
+                    end
+                end
+            end
+        end)
     end
     return true
 end
@@ -549,13 +653,13 @@ function on_level_change(level)
         end)
     end
 
-    -- Crosshair removal (continuous polling to catch weapon switching)
+    -- Crosshair projection (continuous polling to catch weapon switching)
     if reticleTimer ~= nil then
         uevrUtils.clearInterval(reticleTimer)
         reticleTimer = nil
     end
     reticleTimer = uevrUtils.setInterval(200, function()
-        hideReticles()
+        manageReticles()
     end)
 end
 

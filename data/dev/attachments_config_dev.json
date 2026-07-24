@@ -94,21 +94,21 @@
     "uevr_attachments_CronosCharacterPlay_BP_C_SK_Flashlight_02_use_laser": false,
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_end_time": 0.0,
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_existing_guid": 1,
-    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_activation_distance": 0.0,
-    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_activation_hand": 1,
-    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_attach_type": 1,
-    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_grip_animation": 1,
+    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_activation_distance": 7.5,
+    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_activation_hand": 2,
+    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_attach_type": 3,
+    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_grip_animation": 2,
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_grip_priority": "1",
-    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_id": "de9f2f9f-f9a6-4685-a68e-7710da1400d4",
-    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_label": "New Accessory",
+    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_id": "c4aeebab-9864-4fb5-bd92-1d12759497ba",
+    "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_label": "Left Hand",
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_location": [
-        0.0,
-        0.0,
-        0.0
+        3.0,
+        2.299999952316284,
+        -2.5
     ],
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_rotation": [
-        0.0,
-        0.0,
+        38.0,
+        19.700000762939453,
         0.0
     ],
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_socket_list": 1,

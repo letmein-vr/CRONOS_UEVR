@@ -20,6 +20,8 @@
     "rightAccessoryWhenActivePriority": "0",
     "rightArmWhenActive": 1,
     "rightArmWhenActivePriority": "0",
+    "uevr_attachments_CronosCharacterPlay_BP_C_SK_Flashlight_02_grip_animation": 1,
+    "uevr_attachments_MultiModeGun_C_RootComponent_grip_animation": 6,
     "uevr_pawn_hideSettingsHiddenInGame": false,
     "uevr_pawn_hideSettingsHiddenInGamePropagate": false,
     "uevr_pawn_hideSettingsRenderInDepthPass": false,

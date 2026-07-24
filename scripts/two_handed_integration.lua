@@ -1,4 +1,4 @@
-﻿local twoHandedAiming = require("libs/two_handed_aiming")
+local twoHandedAiming = require("libs/two_handed_aiming")
 local controllers = require("libs/controllers")
 local uevrUtils = require("libs/uevr_utils")
 local configui = require("libs/configui")
@@ -47,14 +47,32 @@ local function getEquippedWeaponForCronos(pawn)
         local gun = uevrUtils.getValid(wpc.MultiModeGun)
         if gun == nil then return nil, nil, nil end
 
-        if gun.bHidden then return nil, nil, nil end
+        -- The engine leaves the weapon hidden after mantling. Force it visible!
+        if gun.bHidden then 
+            gun.bHidden = false 
+            pcall(function() gun:call("SetActorHiddenInGame", false) end)
+        end
 
         local root = uevrUtils.getValid(gun.RootComponent)
 
-        -- Raw property chain (no getValid) mirrors proven Stalker2 pattern:
-        -- p.Mesh.SkeletalMesh works; wrapping in getValid() breaks it
         local mesh = gun.SkeletalMesh  -- the SkeletalMeshComponent on the actor
         if not mesh then mesh = gun.Mesh end
+        
+        if mesh then
+            mesh = uevrUtils.getValid(mesh)
+            if mesh then
+                -- CRITICAL: Prevent the engine from freezing bone evaluation when it natively hides the mesh!
+                -- 0 = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones
+                mesh.VisibilityBasedAnimTickOption = 0
+
+                -- The game also hides the mesh, which stops bone animation, 
+                -- causing both the gun and the hand PMC to collapse to origin.
+                pcall(function() 
+                    mesh:SetHiddenInGame(false, true)
+                    mesh:SetVisibility(true, true)
+                end)
+            end
+        end
 
         local skelName = "Unknown"
         if mesh then
@@ -367,6 +385,7 @@ local configDef = {
             { widgetType = "text_colored", label = "Cronos: The New Dawn VR", color = "#8B0000FF" },
             { widgetType = "spacing" },
             { widgetType = "checkbox", id = "twoHandEnabled", label = "Enable 2-Handing", initialValue = true },
+            { widgetType = "checkbox", id = "enable3DReticle", label = "Enable 3D Reticle", initialValue = true },
             { widgetType = "spacing" },
             { widgetType = "tree_node", id = "dev_tools_header", label = "Dev Tools", initialOpen = false },
             { widgetType = "spacing" },
