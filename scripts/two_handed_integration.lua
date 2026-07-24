@@ -806,6 +806,7 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
     local isTwoHandedWeapon = true
     local isPhysicallyGripping = false
 
+    local isOverlappingWeapon = false
     if isAlive(BoxCompLH) and isAlive(GripBox) then
         local overlapping = {}
         pcall(function() BoxCompLH:GetOverlappingComponents(overlapping) end)
@@ -813,17 +814,24 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
         for _, comp in ipairs(overlapping) do
             if comp and UEVR_UObjectHook.exists(comp) then
                 if comp:get_full_name() == gripFullName then
-                    isPhysicallyGripping = true
+                    isOverlappingWeapon = true
                     break
                 end
             end
         end
     end
 
+    if isOverlappingWeapon and _G.leftGripIsDown then
+        isPhysicallyGripping = true
+    end
+
     -- Dev toggle: force 2-handing on regardless of physical detection
     if configui.getValue("forceTwoHand") == true then
         isPhysicallyGripping = true
     end
+
+    _G.isTwoHandingActive = isPhysicallyGripping
+    _G.leftHandOverlappingWeapon = isOverlappingWeapon
 
     -- Ã¢â€â‚¬Ã¢â€â‚¬ Left hand PMC re-parenting (MachineGun 2-hand grip) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     local leftPMC = getLeftPMC()
@@ -885,5 +893,16 @@ uevr.sdk.callbacks.on_xinput_get_state(function(retval, user_index, state)
     end
 
     rightGripWasDown = rightGripNow
+
+    -- 2-Handing: Track left grip then suppress it whenever the hand is in the weapon zone.
+    -- We must read the raw button state BEFORE we unpress it, so the stereo tick can
+    -- see whether the player is physically squeezing the grip.
+    -- XINPUT_GAMEPAD_LEFT_SHOULDER = 0x0100
+    local leftGripNow = uevrUtils.isButtonPressed(state, 0x0100)
+    _G.leftGripIsDown = leftGripNow
+
+    if _G.leftHandOverlappingWeapon then
+        uevrUtils.unpressButton(state, 0x0100)
+    end
 end)
 

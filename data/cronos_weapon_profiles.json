@@ -8,15 +8,15 @@
         "lhPmcRotRoll": -56.25,
         "lhPmcRotYaw": -64.125,
         "lhSocket": "AnnG_handLeft_socket",
-        "pmcOffX": -2.812999963760376,
-        "pmcOffY": -0.31200000643730164,
-        "pmcOffZ": 5.313000202178955,
+        "pmcOffX": -3.437000036239624,
+        "pmcOffY": 2.187999963760376,
+        "pmcOffZ": -0.31200000643730164,
         "pmcRotPitch": -4.5,
-        "pmcRotRoll": 31.5,
+        "pmcRotRoll": -13.5,
         "pmcRotYaw": 1.125,
-        "scaleX": 0.2930000126361847,
-        "scaleY": 0.49900001287460327,
-        "scaleZ": 0.37700000405311584,
+        "scaleX": 0.5299999713897705,
+        "scaleY": 0.5429999828338623,
+        "scaleZ": 0.4830000102519989,
         "slRotPitch": -3.375,
         "slRotYaw": 14.625
     },
@@ -59,12 +59,13 @@
         "lhPmcRotYaw": 23.625,
         "lhSocket": "SmrtG_handLeft_socket",
         "offX": -1.562000036239624,
-        "offY": 35.625,
+        "offY": 36.5620002746582,
         "pmcOffZ": -0.31200000643730164,
         "pmcRotPitch": -3.375,
         "pmcRotRoll": -1.125,
-        "scaleY": 0.597000002861023,
-        "scaleZ": 0.3709999918937683
+        "scaleX": 0.6650000214576721,
+        "scaleY": 0.7409999966621399,
+        "scaleZ": 0.5199999809265137
     },
     "ShotGun": {
         "debugMode": false,
@@ -76,9 +77,9 @@
         "lhSocket": "SprdG_LeftHandHandle",
         "offX": -1.562000036239624,
         "offY": 43.4370002746582,
-        "scaleX": 0.38600000739097595,
-        "scaleY": 0.5040000081062317,
-        "scaleZ": 0.46399998664855957,
+        "scaleX": 0.652999997138977,
+        "scaleY": 0.6340000033378601,
+        "scaleZ": 0.6079999804496765,
         "slRotYaw": 18.0
     }
 }

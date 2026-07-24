@@ -548,6 +548,7 @@ end
 -- Manage reticles: forces native reticles to 100% opacity and
 -- extracts the active one into the 3D VR world using reticule.lua.
 -- ─────────────────────────────────────────────────────────────────
+-- -----------------------------------------------------------------
 local lastActiveWidget = nil
 
 local function manageReticles()
@@ -623,9 +624,59 @@ local function manageReticles()
     return true
 end
 
--- ─────────────────────────────────────────────────────────────────
--- Level change — recreate controllers and VR hands every load
--- ─────────────────────────────────────────────────────────────────
+-- -----------------------------------------------------------------
+-- Manage Main Menu State: toggles Aim Method and UI Follows View
+-- -----------------------------------------------------------------
+local wasInMainMenu = false
+local cachedMainMenu = nil
+local savedAimMethod = 2
+
+local function manageMainMenuState()
+    if cachedMainMenu == nil or uevrUtils.getValid(cachedMainMenu) == nil then
+        local widgets = uevrUtils.find_all_of("Class /Script/UMG.UserWidget", false)
+        if widgets ~= nil then
+            for _, w in ipairs(widgets) do
+                local ok, name = pcall(function() return w:get_full_name() end)
+                if ok and name then
+                    if name:find("MainMenuWidget_BP") and not name:find("WidgetTree") then
+                        cachedMainMenu = w
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    local inMenu = false
+    if cachedMainMenu ~= nil and uevrUtils.getValid(cachedMainMenu) ~= nil then
+        pcall(function()
+            if cachedMainMenu:IsVisible() then
+                inMenu = true
+            end
+        end)
+    end
+
+    if inMenu and not wasInMainMenu then
+        wasInMainMenu = true
+        pcall(function() savedAimMethod = uevr.params.vr:get_aim_method() end)
+        
+        -- Set to Game aim method (0) and disable UI Follows View
+        pcall(function() uevr.params.vr:set_aim_method(0) end)
+        pcall(function() uevrUtils.enableUIFollowsView(false) end)
+        print("[hands] Entered Main Menu - Set Aim: Game, UIFollowsView: Off")
+        
+    elseif not inMenu and wasInMainMenu then
+        wasInMainMenu = false
+        -- Restore previous aim method and re-enable UI Follows View
+        pcall(function() uevr.params.vr:set_aim_method(savedAimMethod) end)
+        pcall(function() uevrUtils.enableUIFollowsView(true) end)
+        print("[hands] Exited Main Menu - Restored settings")
+    end
+end
+
+-- -----------------------------------------------------------------
+-- Level change � recreate controllers and VR hands every load
+-- -----------------------------------------------------------------
 local attachTimer  = nil
 local reticleTimer = nil
 
@@ -653,19 +704,20 @@ function on_level_change(level)
         end)
     end
 
-    -- Crosshair projection (continuous polling to catch weapon switching)
+    -- UI State and Crosshair projection (continuous polling)
     if reticleTimer ~= nil then
         uevrUtils.clearInterval(reticleTimer)
         reticleTimer = nil
     end
     reticleTimer = uevrUtils.setInterval(200, function()
+        manageMainMenuState()
         manageReticles()
     end)
 end
 
--- ─────────────────────────────────────────────────────────────────
+-- -----------------------------------------------------------------
 -- Right Hand PUNCH Gesture -> R1 (Melee) mapping
--- ─────────────────────────────────────────────────────────────────
+-- -----------------------------------------------------------------
 gestures.autoDetectGesture(gestures.Gesture.PUNCH, true, Handed.Right)
 
 local punchResetTimer = nil
