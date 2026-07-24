@@ -25,5 +25,7 @@
 
 ## Controls
 
+* Dpad currently configured to left controller to HMD and left stick, you can configure this yourself in UEVR Input.
+
 ![Cronos VR](https://raw.githubusercontent.com/letmein-vr/CRONOS_UEVR/main/screenshots/cronosvrcontrols.png)
 
