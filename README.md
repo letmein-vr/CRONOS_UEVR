@@ -1,7 +1,5 @@
 ![Cronos VR](https://raw.githubusercontent.com/letmein-vr/CRONOS_UEVR/main/screenshots/cronosvr.png)
 
-> [!IMPORTANT]
-
 > ⚠️ **LATEST UEVR NIGHTLY REQUIRED**
 > 
 > 🛑 **ROOMSCALE NOT SUPPORTED / PHYSICAL TURNING NOT SUPPORTED**
