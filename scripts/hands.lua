@@ -1,7 +1,7 @@
 -- Cronos VR Profile - Main Entry Point
 -- Manages VR hands (jbusfield libs) and weapon/flashlight attachments via attachments.lua.
--- Gun (MultiModeGun.RootComponent) → right controller
--- Flashlight (Flashlight_Mesh)      → left  controller
+-- Gun (MultiModeGun.RootComponent) â†’ right controller
+-- Flashlight (Flashlight_Mesh)      â†’ left  controller
 --
 -- UObjectHook mc_state JSONs for the gun and flashlight have been disabled.
 -- Attachment offsets are now saved in data/attachments_parameters.json
@@ -20,13 +20,13 @@ uevrUtils.setLogToFile(true)
 hands.setLogLevel(LogLevel.Debug)
 attachments.setLogLevel(LogLevel.Debug)
 
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Attachment options for both weapons
 -- detachFromOriginOnGrip = false keeps the objects inside their
 -- original game hierarchy (WeaponPlayerComponent / pawn) so the
 -- game's own systems don't fight us. The motion-controller state
 -- added by attachToRawController still overrides the final pose.
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 local gunOptions = {
     detachFromOriginOnGrip              = false,
     maintainWorldPositionOnDetachFromOrigin = false,
@@ -53,17 +53,17 @@ local flashlightOptions = {
     allowRenderInMainPassHandling       = false,
 }
 
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Initialize attachments with developer mode ON
--- → shows "Attachments Config Dev" panel in UEVR overlay
--- → loads / creates data/attachments_parameters.json
--- ─────────────────────────────────────────────────────────────────
+-- â†’ shows "Attachments Config Dev" panel in UEVR overlay
+-- â†’ loads / creates data/attachments_parameters.json
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 attachments.init(true)
 reticule.init(false)
 
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Pawn / mesh helpers
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 local function getPawn()
     local pawn = uevr.api:get_local_pawn(0)
     if pawn == nil then return nil end
@@ -127,12 +127,12 @@ local function getFlashlight(pawn)
     return nil
 end
 
--- ─────────────────────────────────────────────────────────────────
--- Flashlight SpotLight → Left Controller via UObjectHook
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Flashlight SpotLight â†’ Left Controller via UObjectHook
 -- We find the SpotLightComponent named 'Light' inside Flashlight_BP_C
 -- and pin it to the left hand motion controller every tick.
 -- This completely overrides the game's internal aim system.
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 local cachedSpotLight      = nil
 local spotLightSearchTime  = 0
 local SPOTLIGHT_CLASS_NAME = "Class /Script/Engine.SpotLightComponent"
@@ -155,7 +155,7 @@ local function findFlashlightSpot()
         local ok, fullName = pcall(function() return obj:get_full_name() end)
         if ok and fullName then
             -- Must be inside a live Flashlight_BP_C actor (PersistentLevel, not the CDO)
-            -- CDOs have "Default__" in their path — explicitly exclude them
+            -- CDOs have "Default__" in their path â€” explicitly exclude them
             if fullName:find("Flashlight_BP_C")
             and fullName:match("%.Light$")
             and not fullName:find("Default__") then
@@ -169,7 +169,7 @@ local function findFlashlightSpot()
 end
 
 uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
-    -- ── Spotlight: find and pin to left controller ──────────────────
+    -- â”€â”€ Spotlight: find and pin to left controller â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     local now = os.clock()
     if cachedSpotLight == nil or not pcall(function() cachedSpotLight:get_full_name() end) then
         if now - spotLightSearchTime > 2.0 then
@@ -204,7 +204,7 @@ uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
         end
     end
 
-    -- ── Cutscene: force pawn.Mesh visible every tick ─────────────────
+    -- â”€â”€ Cutscene: force pawn.Mesh visible every tick â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     -- UObjectHook JSON and the game both fight us, so we override every frame.
     if inCutscene then
         local pawn = getPawn()
@@ -219,7 +219,7 @@ uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
         end
     end
 
-    -- ── Reticle: update 3D position ──────────────────────────────────
+    -- â”€â”€ Reticle: update 3D position â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if reticule.exists() then
         pcall(function()
             reticule.update(nil, reticule.getTargetLocationFromController(Handed.Right))
@@ -228,7 +228,7 @@ uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
 end)
 
 
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Cutscene detection & handling
 --
 -- Uses player:GetViewTarget() to detect view target changes.
@@ -236,7 +236,7 @@ end)
 -- entirely (UEVR_UObjectHook.set_disabled), hide VR hands, and
 -- re-parent weapon meshes back to pawn.Mesh.  On exit, everything
 -- is restored and UObjectHook re-enabled.
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 local attachWeaponsToHands  -- forward declaration (defined later in file)
 
@@ -256,7 +256,7 @@ local function attachWeaponsToPawnMesh(pawn)
     local mesh = uevrUtils.getValid(pawn.Mesh)
     if mesh == nil then return end
 
-    -- Flamethrower → Flamethrower_Attachment socket (same name as on the hand PMC)
+    -- Flamethrower â†’ Flamethrower_Attachment socket (same name as on the hand PMC)
     local flamethrower = uevrUtils.getValid(pawn.FlamethrowerSM)
     if flamethrower ~= nil then
         pcall(function()
@@ -265,7 +265,7 @@ local function attachWeaponsToPawnMesh(pawn)
         end)
     end
 
-    -- Harvester → Harvester_Attachment socket (same name as on the hand PMC)
+    -- Harvester â†’ Harvester_Attachment socket (same name as on the hand PMC)
     local harvester = uevrUtils.getValid(pawn.HarvesterSK)
     if harvester ~= nil then
         pcall(function()
@@ -455,6 +455,16 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
         local pawn = getPawn()
         if pawn ~= nil then
             pcall(function()
+                -- 1. Force pawn.Mesh hidden
+                local pawnMesh = uevrUtils.getValid(pawn.Mesh)
+                if pawnMesh ~= nil then
+                    if not pawnMesh.bHiddenInGame then
+                        pawnMesh:SetHiddenInGame(true, true)
+                    end
+                    pawnMesh:SetVisibility(false, true)
+                end
+
+                -- 2. Force MultiModeGun visible (propagate true hides it, we unhide)
                 local wpc = uevrUtils.getValid(pawn.WeaponPlayerComponent)
                 if wpc ~= nil then
                     local gunActor = uevrUtils.getValid(wpc.MultiModeGun)
@@ -474,6 +484,32 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
                         end
                     end
                 end
+
+                -- 3. Force Flashlight_Mesh visible
+                local flm = uevrUtils.getValid(pawn.Flashlight_Mesh)
+                if flm ~= nil then
+                    if flm.bHiddenInGame then
+                        flm:SetHiddenInGame(false, true)
+                    end
+                    flm:SetVisibility(true, true)
+                end
+
+                -- 4. Force FlamethrowerSM and HarvesterSK visible
+                local ft = uevrUtils.getValid(pawn.FlamethrowerSM)
+                if ft ~= nil then
+                    if ft.bHiddenInGame then
+                        ft:SetHiddenInGame(false, true)
+                    end
+                    ft:SetVisibility(true, true)
+                end
+
+                local hv = uevrUtils.getValid(pawn.HarvesterSK)
+                if hv ~= nil then
+                    if hv.bHiddenInGame then
+                        hv:SetHiddenInGame(false, true)
+                    end
+                    hv:SetVisibility(true, true)
+                end
             end)
         end
     end
@@ -481,8 +517,8 @@ end)
 
 
 
--- ─────────────────────────────────────────────────────────────────
--- Grip update callback — runs every 200 ms (attachments.lua interval)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Grip update callback â€” runs every 200 ms (attachments.lua interval)
 --
 -- Return order:
 --   rightAttachment, rightMesh, rightSocket,
@@ -491,9 +527,9 @@ end)
 --
 -- Passing nil for rightMesh / leftMesh routes through
 -- attachToRawController (UObjectHook motion-controller state).
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 attachments.registerOnGripUpdateCallback(function()
-    -- During cutscenes all attachments should be detached — return nil to
+    -- During cutscenes all attachments should be detached â€” return nil to
     -- prevent the 200 ms interval from immediately re-attaching everything.
     if inCutscene then
         return nil, nil, nil, nil, nil, nil
@@ -514,10 +550,10 @@ attachments.registerOnGripUpdateCallback(function()
            gunOptions, flashlightOptions
 end)
 
--- ─────────────────────────────────────────────────────────────────
--- Attach FlamethrowerSM  → right hand PMC (Flamethrower_Attachment socket)
---        HarvesterSK     → left  hand PMC (Harvester_Attachment socket)
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Attach FlamethrowerSM  â†’ right hand PMC (Flamethrower_Attachment socket)
+--        HarvesterSK     â†’ left  hand PMC (Harvester_Attachment socket)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 attachWeaponsToHands = function()
     local p = getPawn()
     if p == nil then return false end
@@ -544,10 +580,10 @@ attachWeaponsToHands = function()
     return true
 end
 
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Manage reticles: forces native reticles to 100% opacity and
 -- extracts the active one into the 3D VR world using reticule.lua.
--- ─────────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- -----------------------------------------------------------------
 local lastActiveWidget = nil
 
@@ -624,58 +660,9 @@ local function manageReticles()
     return true
 end
 
--- -----------------------------------------------------------------
--- Manage Main Menu State: toggles Aim Method and UI Follows View
--- -----------------------------------------------------------------
-local wasInMainMenu = false
-local cachedMainMenu = nil
-local savedAimMethod = 2
-
-local function manageMainMenuState()
-    if cachedMainMenu == nil or uevrUtils.getValid(cachedMainMenu) == nil then
-        local widgets = uevrUtils.find_all_of("Class /Script/UMG.UserWidget", false)
-        if widgets ~= nil then
-            for _, w in ipairs(widgets) do
-                local ok, name = pcall(function() return w:get_full_name() end)
-                if ok and name then
-                    if name:find("MainMenuWidget_BP") and not name:find("WidgetTree") then
-                        cachedMainMenu = w
-                        break
-                    end
-                end
-            end
-        end
-    end
-
-    local inMenu = false
-    if cachedMainMenu ~= nil and uevrUtils.getValid(cachedMainMenu) ~= nil then
-        pcall(function()
-            if cachedMainMenu:IsVisible() then
-                inMenu = true
-            end
-        end)
-    end
-
-    if inMenu and not wasInMainMenu then
-        wasInMainMenu = true
-        pcall(function() savedAimMethod = uevr.params.vr:get_aim_method() end)
-        
-        -- Set to Game aim method (0) and disable UI Follows View
-        pcall(function() uevr.params.vr:set_aim_method(0) end)
-        pcall(function() uevrUtils.enableUIFollowsView(false) end)
-        print("[hands] Entered Main Menu - Set Aim: Game, UIFollowsView: Off")
-        
-    elseif not inMenu and wasInMainMenu then
-        wasInMainMenu = false
-        -- Restore previous aim method and re-enable UI Follows View
-        pcall(function() uevr.params.vr:set_aim_method(savedAimMethod) end)
-        pcall(function() uevrUtils.enableUIFollowsView(true) end)
-        print("[hands] Exited Main Menu - Restored settings")
-    end
-end
 
 -- -----------------------------------------------------------------
--- Level change � recreate controllers and VR hands every load
+-- Level change — recreate controllers and VR hands every load
 -- -----------------------------------------------------------------
 local attachTimer  = nil
 local reticleTimer = nil
@@ -710,7 +697,6 @@ function on_level_change(level)
         reticleTimer = nil
     end
     reticleTimer = uevrUtils.setInterval(200, function()
-        manageMainMenuState()
         manageReticles()
     end)
 end
@@ -746,3 +732,6 @@ uevr.sdk.callbacks.on_xinput_get_state(function(retval, user_index, state)
         uevrUtils.pressButton(state, 0x0200)
     end
 end)
+
+
+

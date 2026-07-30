@@ -12,5 +12,3 @@ r.MotionBlur.Max 0
 r.DefaultFeature.MotionBlur 0
 r.Tonemapper.GrainQuantization 0
 r.Tonemapper.Quality 0
-r.SSFS 0
-r.Vrs.Enable 0

@@ -1,2 +1,1 @@
-Engine_r.OneFrameThreadLag=0
 Renderer_r.TonemapperGamma=1.650000

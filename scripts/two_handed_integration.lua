@@ -80,7 +80,7 @@ local function getEquippedWeaponForCronos(pawn)
             if skelMesh then
                 -- use get_fname():to_string() as Stalker2 does, avoids path parsing
                 local fname = skelMesh:get_fname():to_string()
-                -- fname is like "SK_ShotGun_01" Ã¢â‚¬â€ strip trailing _NN suffix
+                -- fname is like "SK_ShotGun_01" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â strip trailing _NN suffix
                 skelName = string.gsub(fname, "_%d+$", "")
                 -- also strip leading SK_ prefix for display
                 skelName = string.gsub(skelName, "^SK_", "")
@@ -112,7 +112,7 @@ local function getBoxClass()
 end
 
 -- ==========================================
--- Per-level state Ã¢â‚¬â€ reset whenever the pawn changes
+-- Per-level state ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â reset whenever the pawn changes
 -- ==========================================
 local lastPawn            = nil
 local handParentedToGun   = false
@@ -132,6 +132,12 @@ local punchGunDetachTimer  = nil  -- uevrUtils.setTimeout handle
 local cachedFlashShaft     = nil  -- cached FlashlightShaft StaticMeshComponent
 local FlashBoxRH           = nil  -- collision box on right controller for flashlight zone
 local flashZoneOverlapping = false -- true when FlashBoxRH overlaps FlashBoxLH
+-- Rendering-mode-agnostic once-per-tick gate for the stereo callback.
+-- on_post_calculate_stereo_view_offset fires once per eye per frame (2x in
+-- Native Stereo, but only 1x or alternating in AFW/AFR/Synced Sequential).
+-- We reset this flag in on_pre_engine_tick (guaranteed once per game tick)
+-- so the stereo body runs exactly once per tick regardless of render mode.
+local stereoRanThisTick   = false
 
 -- Find the flashlight SpotLightComponent (same criteria as hands.lua)
 local FLASH_SPOT_CLASS = "Class /Script/Engine.SpotLightComponent"
@@ -226,7 +232,7 @@ local LH_GRIP_POSE = {
     index_03_l  = { rotation = {  0.0,     -35.016,   0.0     } },
 }
 
--- Per-weapon overrides Ã¢â‚¬â€ keyed by the skelName (same as currentWeapon).
+-- Per-weapon overrides ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â keyed by the skelName (same as currentWeapon).
 -- Falls back to LH_GRIP_POSE for any weapon not listed here.
 local LH_GRIP_POSE_SHOTGUN = {
     middle_01_l = { rotation = { 0.0,      -31.5727,  0.0     } },
@@ -271,7 +277,7 @@ end
 
 local function attachPMCToGun(pmc, weaponMesh)
     local hitResult = uevrUtils.get_struct_object("ScriptStruct /Script/Engine.HitResult")
-    -- SnapToTarget (2) Ã¢â‚¬â€ then we override with our per-weapon offsets
+    -- SnapToTarget (2) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â then we override with our per-weapon offsets
     local ok = pmc:K2_AttachTo(weaponMesh, uevrUtils.fname_from_string(GUN_SOCKET), 2, false)
     if ok then
         -- Apply per-weapon PMC offsets from config
@@ -391,7 +397,7 @@ local configDef = {
             { widgetType = "spacing" },
             { widgetType = "text", id = "weapon_label", label = "Current Weapon: None" },
             { widgetType = "spacing" },
-            { widgetType = "text", label = "-- Right Hand (PMC Ã¢â€ â€™ GG_handle socket)" },
+            { widgetType = "text", label = "-- Right Hand (PMC ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GG_handle socket)" },
             { widgetType = "slider_float", id = "pmcOffX",    label = "PMC Offset X",    initialValue = 0.0, range = {-50.0, 50.0} },
             { widgetType = "slider_float", id = "pmcOffY",    label = "PMC Offset Y",    initialValue = 0.0, range = {-50.0, 50.0} },
             { widgetType = "slider_float", id = "pmcOffZ",    label = "PMC Offset Z",    initialValue = 0.0, range = {-50.0, 50.0} },
@@ -399,7 +405,7 @@ local configDef = {
             { widgetType = "slider_float", id = "pmcRotYaw",  label = "PMC Rot Yaw",     initialValue = 0.0, range = {-180.0, 180.0} },
             { widgetType = "slider_float", id = "pmcRotRoll", label = "PMC Rot Roll",    initialValue = 0.0, range = {-180.0, 180.0} },
             { widgetType = "spacing" },
-            { widgetType = "text", label = "-- Left Hand (PMC Ã¢â€ â€™ SmrtG_handLeft_socket, 2-hand only)" },
+            { widgetType = "text", label = "-- Left Hand (PMC ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ SmrtG_handLeft_socket, 2-hand only)" },
             { widgetType = "slider_float", id = "lhPmcOffX",    label = "LH PMC Offset X",  initialValue = 0.0, range = {-50.0, 50.0} },
             { widgetType = "slider_float", id = "lhPmcOffY",    label = "LH PMC Offset Y",  initialValue = 0.0, range = {-50.0, 50.0} },
             { widgetType = "slider_float", id = "lhPmcOffZ",    label = "LH PMC Offset Z",  initialValue = 0.0, range = {-50.0, 50.0} },
@@ -443,7 +449,7 @@ local configDef = {
             { widgetType = "slider_float", id = "flRotYaw",  label = "FL Rot Yaw",     initialValue = 0.0,  range = {-180.0, 180.0} },
             { widgetType = "slider_float", id = "flRotRoll", label = "FL Rot Roll",    initialValue = 0.0,  range = {-180.0, 180.0} },
             { widgetType = "spacing" },
-            { widgetType = "checkbox", id = "debugMode", label = "Debug Visibility", initialValue = true },
+            { widgetType = "checkbox", id = "debugMode", label = "Debug Visibility", initialValue = false },
             { widgetType = "spacing" },
             { widgetType = "text", label = "-- Dev Controls" },
             { widgetType = "checkbox", id = "forceTwoHand", label = "Force 2-Handing ON", initialValue = false },
@@ -475,20 +481,20 @@ local function applyBoxSizes()
             BoxCompLH.RelativeLocation.Z = configui.getValue("lhOffZ") or 0.0
 
             local dbg = configui.getValue("debugMode")
-            if dbg == nil then dbg = true end
+            if dbg == nil then dbg = false end
             BoxCompLH:SetHiddenInGame(not dbg)
             BoxCompLH:SetVisibility(dbg, false)
         end
         if isAlive(GripBox) then
             local dbg = configui.getValue("debugMode")
-            if dbg == nil then dbg = true end
+            if dbg == nil then dbg = false end
             GripBox:SetHiddenInGame(not dbg)
             GripBox:SetVisibility(dbg, false)
         end
     end)
     pcall(function()
         local dbg = configui.getValue("debugMode")
-        if dbg == nil then dbg = true end
+        if dbg == nil then dbg = false end
         if isAlive(FlashBoxLH) then
             FlashBoxLH.RelativeScale3D.X = configui.getValue("flScaleX") or 0.1
             FlashBoxLH.RelativeScale3D.Y = configui.getValue("flScaleY") or 0.1
@@ -501,6 +507,10 @@ local function applyBoxSizes()
             FlashBoxLH.RelativeRotation.Roll  = configui.getValue("flRotRoll")  or 0.0
             FlashBoxLH:SetHiddenInGame(not dbg)
             FlashBoxLH:SetVisibility(dbg, false)
+        end
+        if isAlive(FlashBoxRH) then
+            FlashBoxRH:SetHiddenInGame(not dbg)
+            FlashBoxRH:SetVisibility(dbg, false)
         end
     end)
 end
@@ -526,7 +536,7 @@ local function applyPMCOffset(pmc)
     end)
 end
 
--- All slider IDs Ã¢â‚¬â€ used for profile save/load
+-- All slider IDs ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â used for profile save/load
 local ids = {
     "pmcOffX","pmcOffY","pmcOffZ","pmcRotPitch","pmcRotYaw","pmcRotRoll",
     "lhPmcOffX","lhPmcOffY","lhPmcOffZ","lhPmcRotPitch","lhPmcRotYaw","lhPmcRotRoll",
@@ -622,8 +632,8 @@ local function initBoxes(pawn, weaponMesh, leftHand)
     end
 
     -- Flashlight Collision Boxes:
-    --   FlashBoxLH  â”€ attached to left hand PMC near the flashlight socket (zone anchor)
-    --   FlashBoxRH  â”€ attached to right controller (the "hand" that reaches into the zone)
+    --   FlashBoxLH  Ã¢â€â‚¬ attached to left hand PMC near the flashlight socket (zone anchor)
+    --   FlashBoxRH  Ã¢â€â‚¬ attached to right controller (the "hand" that reaches into the zone)
     -- When FlashBoxRH overlaps FlashBoxLH and right grip is pressed, we toggle.
     local leftPMCForBox = hands.getHandComponent(Handed.Left)
     if leftPMCForBox and isAlive(leftPMCForBox) then
@@ -655,7 +665,7 @@ local function initBoxes(pawn, weaponMesh, leftHand)
                 FlashBoxRH:SetCollisionObjectType(2)
                 FlashBoxRH:SetCollisionResponseToAllChannels(1)
                 FlashBoxRH:SetCollisionEnabled(1)  -- QueryOnly
-                -- Small fixed box â€“ just enough to detect right-hand presence
+                -- Small fixed box Ã¢â‚¬â€œ just enough to detect right-hand presence
                 FlashBoxRH.RelativeScale3D.X = 0.2
                 FlashBoxRH.RelativeScale3D.Y = 0.2
                 FlashBoxRH.RelativeScale3D.Z = 0.2
@@ -667,13 +677,17 @@ local function initBoxes(pawn, weaponMesh, leftHand)
     applyBoxSizes()
 end
 
-uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_index, world_to_meters, position, rotation, is_double)
-    if not vr.is_hmd_active() or view_index ~= 1 then return end
+-- Reset the once-per-tick gate at the start of every engine tick.
+uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
+    stereoRanThisTick = false
+end)
 
+-- All per-tick logic in one named function, called from both the stereo callback
+-- (Native Stereo path) and the engine-tick fallback (AFW/AFR/Synced Sequential).
+local function doStereoBody()
     local pawn = api:get_local_pawn(0)
     if not pawn then return end
 
-    -- Detect level load / respawn Ã¢â‚¬â€ pawn identity changes each time
     if pawn ~= lastPawn then
         lastPawn = pawn
         resetLevelState()
@@ -682,7 +696,6 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
     local rightHand, leftHand = getControllerComponents()
     if not rightHand or not leftHand then return end
 
-    -- Ã¢â€â‚¬Ã¢â€â‚¬ Right hand PMC Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     local rightPMC = getRightPMC()
     local pmcAlive = rightPMC and isAlive(rightPMC)
 
@@ -690,10 +703,6 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
     local gunEquipped = weaponComponent ~= nil and weaponMesh ~= nil
 
     local hasPunch = gestures.getGesture(gestures.Gesture.PUNCH)
-
-    -- Punch fires true for ONE frame only (speed peak). Start a 1.5-second
-    -- timer so the PMC stays free from the gun for the full melee animation.
-    -- Matches the 1500ms punchResetTimer in hands.lua.
     if hasPunch and not punchAnimationActive then
         punchAnimationActive = true
         if punchGunDetachTimer then uevrUtils.clearTimeout(punchGunDetachTimer) end
@@ -701,34 +710,29 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
             punchAnimationActive = false
             punchGunDetachTimer  = nil
         end)
-        print("[PMC] Punch detected Ã¢â‚¬â€ freeing PMC from gun for 1.5s")
+        print("[PMC] Punch detected - freeing PMC from gun for 1.5s")
     end
 
     if pmcAlive then
         captureBaseTransform(rightPMC)
 
         if punchAnimationActive and handParentedToGun then
-            -- First tick of punch: detach PMC from gun socket Ã¢â€ â€™ follow right controller
             print("[PMC] Detaching from gun (melee active)")
             pcall(function() attachPMCToController(rightPMC, rightHand) end)
             handParentedToGun = false
 
         elseif gunEquipped and not handParentedToGun and not punchAnimationActive then
-            -- Punch animation finished Ã¢â‚¬â€ re-parent to gun socket
             print("[PMC] Re-attaching to gun (melee ended)")
             pcall(function() attachPMCToGun(rightPMC, weaponMesh) end)
             handParentedToGun = true
 
         elseif not gunEquipped and handParentedToGun then
-            -- Gun hidden/gone Ã¢â‚¬â€ free PMC
             pcall(function() attachPMCToController(rightPMC, rightHand) end)
             handParentedToGun = false
         end
     end
 
-    -- â”€â”€ Flashlight zone overlap check (collision-based) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    -- Check every tick whether the right controller box is inside the flashlight zone.
-    -- Result is stored in flashZoneOverlapping and read by the XInput callback.
+    -- Flashlight zone overlap check
     flashZoneOverlapping = false
     if isAlive(FlashBoxRH) and isAlive(FlashBoxLH) then
         local overlapping = {}
@@ -744,9 +748,7 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
         end
     end
 
-    -- â”€â”€ Flashlight visibility enforcement (every tick) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    -- The game's Blueprint logic can override SetVisibility, so we re-apply our
-    -- desired state each frame to guarantee it wins.
+    -- Flashlight visibility enforcement
     if cachedFlashFL == nil then
         local now = os.clock()
         if now - flSearchTime > 2.0 then
@@ -755,28 +757,24 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
             pcall(function() cachedFlashShaft = findFlashlightShaftForToggle() end)
         end
     else
-        -- Validate still alive; invalidate if the object was GC'd
         local ok = pcall(function() cachedFlashFL:get_full_name() end)
         if not ok then cachedFlashFL = nil end
     end
-    -- FlashlightShaft: search/validate independently
     if cachedFlashShaft == nil then
         local now = os.clock()
-        if now - flSearchTime > 2.0 then   -- flSearchTime already throttles both
+        if now - flSearchTime > 2.0 then
             pcall(function() cachedFlashShaft = findFlashlightShaftForToggle() end)
         end
     else
         local ok = pcall(function() cachedFlashShaft:get_full_name() end)
         if not ok then cachedFlashShaft = nil end
     end
-    -- Enforce spotlight
     if cachedFlashFL ~= nil then
         pcall(function()
             cachedFlashFL:SetVisibility(flashlightOn, true)
             cachedFlashFL:SetHiddenInGame(not flashlightOn, true)
         end)
     end
-    -- Enforce shaft beam
     if cachedFlashShaft ~= nil then
         pcall(function()
             cachedFlashShaft:SetVisibility(flashlightOn, true)
@@ -784,28 +782,24 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
         end)
     end
 
-    -- Ã¢â€â‚¬Ã¢â€â‚¬ Nothing more to do without a gun Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if not gunEquipped then return end
 
-    -- Ã¢â€â‚¬Ã¢â€â‚¬ Weapon switch detection Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    -- Weapon switch detection
     if skelName ~= nil and skelName ~= currentWeapon then
         currentWeapon = skelName
         configui.setLabel("weapon_label", "Current Weapon: " .. currentWeapon)
         applyProfileValues(currentWeapon)
         applyBoxSizes()
-        -- Re-apply PMC offset for new weapon profile
         if rightPMC and isAlive(rightPMC) and handParentedToGun then
             pcall(function() attachPMCToGun(rightPMC, weaponMesh) end)
         end
     end
 
-    -- Ã¢â€â‚¬Ã¢â€â‚¬ Grip collision boxes Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     initBoxes(pawn, weaponMesh, leftHand)
 
-    -- Ã¢â€â‚¬Ã¢â€â‚¬ Two-handed aiming Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    -- Two-handed aiming
     local isTwoHandedWeapon = true
     local isPhysicallyGripping = false
-
     local isOverlappingWeapon = false
     if isAlive(BoxCompLH) and isAlive(GripBox) then
         local overlapping = {}
@@ -820,57 +814,76 @@ uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_in
             end
         end
     end
-
-    if isOverlappingWeapon and _G.leftGripIsDown then
-        isPhysicallyGripping = true
-    end
-
-    -- Dev toggle: force 2-handing on regardless of physical detection
-    if configui.getValue("forceTwoHand") == true then
-        isPhysicallyGripping = true
-    end
-
+    if isOverlappingWeapon and _G.leftGripIsDown then isPhysicallyGripping = true end
+    if configui.getValue("forceTwoHand") == true then isPhysicallyGripping = true end
     _G.isTwoHandingActive = isPhysicallyGripping
     _G.leftHandOverlappingWeapon = isOverlappingWeapon
 
-    -- Ã¢â€â‚¬Ã¢â€â‚¬ Left hand PMC re-parenting (MachineGun 2-hand grip) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    -- Left hand PMC re-parenting
     local leftPMC = getLeftPMC()
     if leftPMC and isAlive(leftPMC) then
         captureLeftBaseTransform(leftPMC)
-
         local shouldLHParent = isTwoHandedWeapon
             and isPhysicallyGripping
             and (configui.getValue("lhSocket") ~= nil and configui.getValue("lhSocket") ~= "")
             and configui.getValue("twoHandEnabled") ~= false
-
         if shouldLHParent and not leftHandParentedToGun then
             pcall(function() attachLeftPMCToGun(leftPMC, weaponMesh) end)
             leftHandParentedToGun = true
-            -- Tell handsAnimation the left hand is gripping so it applies
-            -- grip_left_weapon instead of open_left every tick
             hands.setHoldingAttachment(Handed.Left, true)
         elseif not shouldLHParent and leftHandParentedToGun then
             pcall(function() attachLeftPMCToController(leftPMC) end)
             leftHandParentedToGun = false
-            -- Restore open-hand animation
             hands.setHoldingAttachment(Handed.Left, false)
         end
     end
 
-    -- â”€â”€ Left hand grip pose (forced every tick while 2-handing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    -- Left hand grip pose
     if leftHandParentedToGun and leftPMC and isAlive(leftPMC) then
         local pose = LH_WEAPON_POSES[currentWeapon] or LH_GRIP_POSE
-        pcall(function()
-            animation.initializeBones(leftPMC, pose)
-        end)
+        pcall(function() animation.initializeBones(leftPMC, pose) end)
     end
 
     if isTwoHandedWeapon and isPhysicallyGripping and configui.getValue("twoHandEnabled") ~= false then
         twoHandedAiming.applyTwoHandedRotation(weaponComponent, rightHand, leftHand)
     end
+end
+
+-- Primary: run the full body on the FIRST stereo callback that fires each tick.
+-- In AFW/AFR only view_index 0 fires, so this handles that mode.
+-- In Native Stereo both 0 and 1 fire; the gate ensures we only run once (at view 0).
+uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_index, world_to_meters, position, rotation, is_double)
+    if not vr.is_hmd_active() then return end
+    if stereoRanThisTick then return end
+    stereoRanThisTick = true
+    doStereoBody()
 end)
+
+-- Secondary (Native Stereo only): re-apply weapon rotation at view_index 1.
+-- In Native Stereo, input.lua runs updateMeshRelativePosition at view_index 1,
+-- which moves the character mesh and cascades to override K2_SetWorldRotation on
+-- the weapon.  By re-applying rotation here (after input.lua) it sticks.
+-- In AFW/AFR view_index 1 never fires, so this is a no-op — the rotation applied
+-- in the primary callback above is already correct (controller data is valid there).
+uevr.sdk.callbacks.on_post_calculate_stereo_view_offset(function(device, view_index, world_to_meters, position, rotation, is_double)
+    if not vr.is_hmd_active() then return end
+    if view_index ~= 1 then return end
+    if not _G.isTwoHandingActive then return end
+    local pawn = api:get_local_pawn(0)
+    if not pawn then return end
+    local weaponComponent, _, _ = getEquippedWeaponForCronos(pawn)
+    if not weaponComponent then return end
+    local rightHand, leftHand = getControllerComponents()
+    if not rightHand or not leftHand then return end
+    twoHandedAiming.applyTwoHandedRotation(weaponComponent, rightHand, leftHand)
+    -- getEquippedWeaponForCronos calls SetVisibility(true, propagate=true) on the weapon
+    -- mesh, which cascades to child components (GripBox, FlashBoxLH via left PMC).
+    -- Re-enforce the correct hidden state so debug boxes stay invisible.
+    applyBoxSizes()
+end)
+
 -- == Flashlight toggle (collision-box overlap) ==
--- FlashBoxRH on right controller overlaps FlashBoxLH on left hand → grip toggles flashlight.
+-- FlashBoxRH on right controller overlaps FlashBoxLH on left hand -> grip toggles flashlight.
 -- flashZoneOverlapping is computed every stereo tick and cached for use here.
 uevr.sdk.callbacks.on_xinput_get_state(function(retval, user_index, state)
     if user_index ~= 0 then return end
@@ -905,4 +918,5 @@ uevr.sdk.callbacks.on_xinput_get_state(function(retval, user_index, state)
         uevrUtils.unpressButton(state, 0x0100)
     end
 end)
+
 
