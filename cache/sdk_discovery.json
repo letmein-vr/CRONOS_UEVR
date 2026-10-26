@@ -1,0 +1,131 @@
+{
+  "entries": {
+    "frendertarget_vtable_indices": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "display_gamma_index": 6,
+        "render_target_texture_index": 2
+      }
+    },
+    "frhitexture_get_native_resource": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "vtable_index": 4
+      }
+    },
+    "fscene_offsets": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "frame_count_offset": 18396,
+        "get_frame_count_vtable_index": 32,
+        "increment_frame_count_vtable_index": 31,
+        "start_frame_vtable_index": 30
+      }
+    },
+    "fsceneview_constructor": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "rva": 64985440
+      }
+    },
+    "fsceneviewfamily_offsets": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "render_target_offset": 48,
+        "scene_interface_offset": 64,
+        "views_offset": 8
+      }
+    },
+    "ftexture_render_target_resource_vtable_offset": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "offset": 80
+      }
+    },
+    "ftexture_rhi_resource_offset": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "offset": 16
+      }
+    },
+    "utexture_render_resource_offset": {
+      "module": {
+        "engine_version": "",
+        "file_size": 192205216,
+        "image_size": 196812800,
+        "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cronos. The New Dawn\\Cronos\\Binaries\\Win64\\Cronos-Win64-Shipping.exe",
+        "time_date_stamp": 3017430934,
+        "version_ls": 0,
+        "version_ms": 65540,
+        "write_time": 134370905234529365
+      },
+      "payload": {
+        "offset": 272
+      }
+    }
+  },
+  "schema_version": 1
+}

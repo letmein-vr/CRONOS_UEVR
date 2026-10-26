@@ -276,14 +276,161 @@ local function attachWeaponsToPawnMesh(pawn)
 
     -- Flashlight_Mesh and MultiModeGun are native weapons.
     -- We deliberately DO NOT detach them or re-attach them to "None",
-    -- because that breaks their native animation state machines and 
+    -- because that breaks their native animation state machines and
     -- causes the game to aggressively hide them.
+end
+
+-- ─────────────────────────────────────────────────────────────────
+-- Gun parenting
+-- Natively the gun root hangs off CharacterMesh0. The character
+-- materials dither out when the camera is close to the root of their
+-- attachment chain, and the VR eye sits on the capsule axis, so the gun
+-- (and the right hand PMC attached to it) rendered dithered.
+-- The game's own logic (reload activation, ignoring the player in weapon
+-- traces) only needs the gun's parent component to be owned by the
+-- character. So the gun hangs off a proxy SceneComponent that the
+-- character owns but that is attached to the right motion controller:
+-- owned by the pawn for gameplay, rooted on the controller for rendering.
+-- UObjectHook still drives the gun's pose. The game re-attaches the gun
+-- to its body socket for melee etc., so this is re-applied every tick.
+-- The native parent, socket and relative transform are restored for
+-- cutscenes.
+-- ─────────────────────────────────────────────────────────────────
+local gunNativeAttach = nil  -- { root, parent, socket, loc, rot }
+local gunProxy = nil
+local gunProxyPawn = nil
+
+configui.create({
+    {
+        panelLabel = "Cronos Weapon",
+        saveFile = "weapon_parenting_config",
+        layout = {
+            { widgetType = "checkbox", id = "gunOnController", label = "Gun on controller (fixes gun/right hand dither)", initialValue = true },
+        }
+    }
+})
+
+local restoreGunToNativeParent  -- forward declaration (defined below)
+
+local function getGunProxy(pawn, controller)
+    if gunProxy ~= nil and (gunProxyPawn ~= pawn or uevrUtils.getValid(gunProxy) == nil) then
+        gunProxy = nil
+    end
+    if gunProxy == nil then
+        local cls = uevr.api:find_uobject("Class /Script/Engine.SceneComponent")
+        if cls == nil then return nil end
+        gunProxy = uevr.api:add_component_by_class(pawn, cls)
+        gunProxyPawn = pawn
+        if gunProxy == nil then return nil end
+        print("[hands] Created gun proxy component on pawn")
+    end
+    if gunProxy.AttachParent ~= controller then
+        -- 2 = EAttachmentRule::SnapToTarget
+        gunProxy:K2_AttachToComponent(controller, uevrUtils.fname_from_string("None"), 2, 2, 2, false)
+    end
+    return gunProxy
+end
+
+local function ensureGunOnController(pawn)
+    local root = getGunRoot(pawn)
+    local controller = controllers.getController(1)
+    if root == nil or controller == nil then return end
+
+    local proxy = getGunProxy(pawn, controller)
+    if proxy == nil then return end
+
+    local parent = root.AttachParent
+    if configui.getValue("gunOnController") == false then
+        if parent == proxy then restoreGunToNativeParent() end
+        return
+    end
+    if parent == proxy then return end
+
+    if parent ~= nil then
+        gunNativeAttach = {
+            root   = root,
+            parent = parent,
+            socket = root.AttachSocketName,
+            loc    = { X = root.RelativeLocation.X, Y = root.RelativeLocation.Y, Z = root.RelativeLocation.Z },
+            rot    = { Pitch = root.RelativeRotation.Pitch, Yaw = root.RelativeRotation.Yaw, Roll = root.RelativeRotation.Roll },
+        }
+    end
+
+    -- 1 = EAttachmentRule::KeepWorld
+    root:K2_AttachToComponent(proxy, uevrUtils.fname_from_string("None"), 1, 1, 1, false)
+    print("[hands] Gun root parented to controller proxy")
+end
+
+-- ─────────────────────────────────────────────────────────────────
+-- Muzzle point
+-- MultiModeGun.MuzzlePoint is parked on the pistol's "GG_muzzle"
+-- socket and the game never moves it when the mesh changes (flat
+-- play shoots from the screen, so it doesn't care). CronosAimFix.dll
+-- uses MuzzlePoint as the shot origin, so on meshes without that
+-- socket (shotgun, rifle, ...) shots started at the mesh origin in
+-- the player's hand, inside the capsule. Re-snap it to the current
+-- mesh's own muzzle socket whenever the mesh asset changes.
+-- ─────────────────────────────────────────────────────────────────
+local MUZZLE_SOCKET_FALLBACKS = { "GG_muzzle", "SprdG_muzzle", "SmrtG_muzzle", "AnnG_muzzle" }
+local lastMuzzleMeshAsset = nil
+local lastMuzzleComponent = nil
+
+local function findMuzzleSocket(mesh)
+    local ok, names = pcall(function() return mesh:GetAllSocketNames() end)
+    if ok and names ~= nil then
+        for _, name in ipairs(names) do
+            local str = type(name) == "string" and name or name:to_string()
+            if str:lower():match("_muzzle$") then
+                return str
+            end
+        end
+    end
+    for _, socket in ipairs(MUZZLE_SOCKET_FALLBACKS) do
+        if mesh:DoesSocketExist(uevrUtils.fname_from_string(socket)) then
+            return socket
+        end
+    end
+    return nil
+end
+
+local function ensureMuzzleOnBarrel(pawn)
+    local wpc = uevrUtils.getValid(pawn.WeaponPlayerComponent)
+    if wpc == nil then return end
+    local gun = uevrUtils.getValid(wpc.MultiModeGun)
+    if gun == nil then return end
+    local muzzle = uevrUtils.getValid(gun.MuzzlePoint)
+    local mesh = uevrUtils.getValid(gun.SkeletalMesh or gun.Mesh)
+    if muzzle == nil or mesh == nil then return end
+
+    local asset = mesh.SkeletalMesh
+    if asset == nil or (asset == lastMuzzleMeshAsset and muzzle == lastMuzzleComponent) then return end
+
+    local socket = findMuzzleSocket(mesh)
+    if socket == nil then return end
+
+    -- 2 = EAttachmentRule::SnapToTarget
+    muzzle:K2_AttachToComponent(mesh, uevrUtils.fname_from_string(socket), 2, 2, 2, false)
+    lastMuzzleMeshAsset = asset
+    lastMuzzleComponent = muzzle
+    print("[hands] MuzzlePoint snapped to " .. socket .. " on " .. asset:get_fname():to_string())
+end
+
+restoreGunToNativeParent = function()
+    local a = gunNativeAttach
+    if a == nil then return end
+    if uevrUtils.getValid(a.root) == nil or uevrUtils.getValid(a.parent) == nil then return end
+
+    -- 0 = EAttachmentRule::KeepRelative, then put back the native offset
+    a.root:K2_AttachToComponent(a.parent, a.socket, 0, 0, 0, false)
+    uevrUtils.set_component_relative_transform(a.root, a.loc, a.rot)
+    print("[hands] Gun root restored to native parent")
 end
 
 local function enterCutscene(pawn)
     if inCutscene then return end
     inCutscene = true
     print("[hands] Cutscene started")
+    pcall(function() uevr.params.vr.set_decoupled_pitch_enabled(false) end)
 
     -- 1. Cleanly remove all UObjectHook motion controller states AND clear
     --    meshAttachmentList. Must happen BEFORE set_disabled so the remove
@@ -309,12 +456,14 @@ local function enterCutscene(pawn)
 
     -- 5. Re-parent all weapons to pawn.Mesh
     attachWeaponsToPawnMesh(pawn)
+    pcall(restoreGunToNativeParent)
 end
 
 local function exitCutscene()
     if not inCutscene then return end
     inCutscene = false  -- set FIRST so grip callback unblocks immediately
     print("[hands] Cutscene ended")
+    pcall(function() uevr.params.vr.set_decoupled_pitch_enabled(true) end)
 
     local pawn = getPawn()
 
@@ -434,17 +583,36 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
     local ok, currentVT = pcall(function() return player:GetViewTarget() end)
     if not ok or currentVT == nil then return end
 
+    local isCinematic = false
     if prevViewTarget ~= currentVT then
         prevViewTarget = currentVT
-
         local ok2, fullName = pcall(function() return currentVT:get_full_name() end)
-        if not ok2 then return end
+        if ok2 then
+            isCinematic = fullName:find("CineCamera", 1, true) ~= nil
+            print("[hands] ViewTarget changed: " .. fullName .. " | cinematic=" .. tostring(isCinematic))
+        end
+    else
+        -- If view target hasn't changed, we still need to know if it's cinematic
+        local ok2, fullName = pcall(function() return currentVT:get_full_name() end)
+        if ok2 then
+            isCinematic = fullName:find("CineCamera", 1, true) ~= nil
+        end
+    end
 
-        local isCinematic = fullName:find("CineCamera", 1, true) ~= nil
-        print("[hands] ViewTarget changed: " .. fullName .. " | cinematic=" .. tostring(isCinematic))
+    local pawn = getPawn()
+    local isWallWalking = false
+    if pawn ~= nil then
+        local wallWalk = pawn.WallWalkComponent
+        if wallWalk ~= nil then
+            isWallWalking = wallWalk["isEnabled?"]
+        end
+    end
 
-        if isCinematic then
-            enterCutscene(getPawn())
+    local shouldBeInCutscene = isCinematic or isWallWalking
+
+    if shouldBeInCutscene ~= inCutscene then
+        if shouldBeInCutscene then
+            enterCutscene(pawn)
         else
             exitCutscene()
         end
@@ -454,6 +622,8 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
     if not inCutscene then
         local pawn = getPawn()
         if pawn ~= nil then
+            pcall(ensureGunOnController, pawn)
+            pcall(ensureMuzzleOnBarrel, pawn)
             pcall(function()
                 -- 1. Force pawn.Mesh hidden
                 local pawnMesh = uevrUtils.getValid(pawn.Mesh)
