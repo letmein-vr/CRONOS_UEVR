@@ -6,7 +6,7 @@ A full motion-controller VR conversion of Cronos: The New Dawn for UEVR, with vi
 
 ## IMPORTANT!
 
-- My custom UEVR backend is required - see the releases on [letmein-vr/UEVR](https://github.com/letmein-vr/UEVR/releases) to download it.
+- The latest [UEVR nightly](https://github.com/praydog/UEVR-nightly/releases) is required.
 - Download the profile from the [releases](https://github.com/letmein-vr/CRONOS_UEVR/releases) (latest: [1.3](https://github.com/letmein-vr/CRONOS_UEVR/releases/tag/1.3)).
 
 ## Features
@@ -59,7 +59,7 @@ The D-pad is mapped to the left controller (HMD + left stick); you can change th
 
 ## Installation
 
-1. Install my custom UEVR (see above).
+1. Install the latest UEVR nightly (see above).
 2. Import the release profile in UEVR (or copy the files into `%APPDATA%\UnrealVRMod\Cronos-Win64-Shipping`).
 3. Start the game and inject UEVR.
 
@@ -74,7 +74,7 @@ Everything is adjustable in the UEVR overlay, without editing files:
 
 ## Under the hood
 
-Built on jbusfield's shared uevrlib Lua framework, running on my UEVR backend. Game-specific logic lives in a few scripts on top of the framework:
+Built on jbusfield's shared uevrlib Lua framework. Game-specific logic lives in a few scripts on top of the framework:
 
 - `hands.lua` – hands, weapon and flashlight attachment, cutscene handling, the punch gesture and the 3D reticle. The gun hangs off a component the Traveler owns that rides on the right controller, so the game still treats it as the player's gun (reloads, not hitting yourself) while it renders like part of the controller (no close-camera dither). The muzzle point is moved onto each gun's own barrel socket.
 - `two_handed_integration.lua` – two-handed aiming, per-weapon profiles and the flashlight toggle.
