@@ -1,0 +1,21 @@
+{
+    "changes": null,
+    "current": null,
+    "debug": {
+        "BiomassMPC": "scalars=-1 type=nil",
+        "FogCutOutParameters": "scalars=-1 type=nil",
+        "Gameplay_MPC": "scalars=-1 type=nil",
+        "GlobalSettings": "scalars=-1 type=nil",
+        "GlobalShaderParameters": "scalars=-1 type=nil",
+        "Global_Params": "scalars=-1 type=nil",
+        "HeroShadowPosition": "scalars=-1 type=nil",
+        "MPC_ItemHighlighter": "scalars=-1 type=nil",
+        "MPC_Storm": "scalars=-1 type=nil",
+        "MPC_Water": "scalars=-1 type=nil",
+        "PN_BendingParameters": "scalars=-1 type=nil",
+        "PivotPainterWindParameters": "scalars=-1 type=nil"
+    },
+    "errors": null,
+    "kmlFound": true,
+    "mpcCount": 13
+}

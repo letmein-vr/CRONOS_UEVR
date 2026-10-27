@@ -9,14 +9,14 @@
             "id": "MultiModeGun_C_RootComponent",
             "location": [
                 0.0,
-                -0.30000001192092896,
-                2.5
+                -2.5,
+                0.30000001192092896
             ],
             "melee": false,
             "parent": "MultiModeGun_C",
             "rotation": [
                 0.0,
-                0.0,
+                -90.0,
                 0.0
             ],
             "scale": [
@@ -25,8 +25,10 @@
                 0.9999995735757754
             ],
             "scoped": false,
+            "strip_child_suffix_length": false,
             "two_handed": false,
-            "use_laser": false
+            "use_laser": false,
+            "weight": 0
         },
         {
             "animation": "",
@@ -52,11 +54,33 @@
                 1.0
             ],
             "scoped": false,
+            "strip_child_suffix_length": false,
             "two_handed": false,
-            "use_laser": false
+            "use_laser": false,
+            "weight": 0
         }
     ],
     "baseOffsets": {
+        "location": [
+            0,
+            0,
+            0
+        ],
+        "rotation": [
+            0,
+            0,
+            0
+        ],
+        "scale": [
+            1,
+            1,
+            1
+        ]
+    },
+    "leftHandOffsets": {
+        "flip_x": false,
+        "flip_y": false,
+        "flip_z": false,
         "location": [
             0,
             0,

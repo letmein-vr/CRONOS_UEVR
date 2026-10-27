@@ -4,6 +4,7 @@ uevrUtils.setLogToFile(true)
 local configui = require("libs/configui")
 local controllers = require("libs/controllers")
 local animation = require("libs/animation")
+local pawnModule = require("libs/pawn")
 local hands = require("libs/hands")
 hands.setLogLevel(LogLevel.Debug)
 animation.setLogLevel(LogLevel.Debug)
@@ -209,7 +210,7 @@ local configDefinition = {
 					widgetType = "drag_float3",
 					id = "mesh_rotation",
 					label = "Rotation",
-					speed = 45,
+					speed = 1,
 					range = {-180, 180},
 					initialValue = {0.0, 0.0, 0.0}
 				},
@@ -1206,6 +1207,11 @@ local configDefinition = {
 		}
 	},
 }
+for j = 1, 3 do
+	for _, boneID in ipairs(handBones[j]) do
+		table.insert(configDefinition[1].layout, { widgetType = "input_text", id = boneID .. "_name", label = boneID .. "_name", initialValue = "", isHidden = true })
+	end
+end
 configui.create(configDefinition)
 
 local function setFinderBonesAdvanced(value)
@@ -1484,6 +1490,7 @@ local function getMeshComponent()
 					return getCustomHandComponent(selectedMeshName)
 				end
 			else
+				meshPropertyName = meshPropertyName:gsub("Pawn", pawnModule.getPawnBaseName())
 				return uevrUtils.getObjectFromDescriptor(meshPropertyName)
 			end
 		end
@@ -1509,7 +1516,8 @@ local function updateHands()
 			if rot ~= nil then
 				hands.setOffset({X=0, Y=0, Z=0, Pitch=rot.X, Yaw=rot.Y, Roll=rot.Z})
 			end
-			hands.setIgnoreRelativeOffset(configui.getValue("ignore_relative_offset"))
+			hands.setIgnoreRelativeOffset(configui.getValue("mesh_rotation_ignore_relative"))
+			--hands.setIgnoreRelativeOffset(configui.getValue("ignore_relative_offset"))
 			hands.debug(getMeshComponent(), nil, nil, true)
 
 			local fovParam = configui.getValue("fov_param_name")
@@ -2073,7 +2081,8 @@ end
 
 local function loadCharacterMeshList()
 	meshList = {}
-	if uevrUtils.getValid(pawn) ~= nil then
+	local pawn = uevrUtils.getValid(pawnModule.getPawn())
+	if pawn ~= nil then
 		meshList = uevrUtils.getPropertiesOfClass(pawn, "Class /Script/Engine.SkeletalMeshComponent")
 		for index, name in ipairs(meshList) do
 			meshList[index] = "Pawn." .. meshList[index]
@@ -2081,7 +2090,8 @@ local function loadCharacterMeshList()
 
 		if configui.getValue("include_children_in_mesh_search") then
 			for _, prop in ipairs(meshList) do
-				local parent = uevrUtils.getObjectFromDescriptor(prop)
+				local propertyName = prop:gsub("Pawn", pawnModule.getPawnBaseName())
+				local parent = uevrUtils.getObjectFromDescriptor(propertyName)
 				if parent ~= nil then
 					local children = parent.AttachChildren
 					if children ~= nil then
@@ -2213,6 +2223,14 @@ local function updateTestingAnimation()
 	end
 end
 
+
+for j = 1, 3 do
+	for _, boneID in ipairs(handBones[j]) do
+		configui.onUpdate(boneID, function(value)
+			configui.setValue(boneID .. "_name", bones["names"][value] or "")
+		end)
+	end
+end
 
 configui.onCreateOrUpdate("animation_finger_bones_advanced_checkbox", function(value)
 	setFinderBonesAdvanced(value)
@@ -3080,6 +3098,17 @@ print("Current Step",currentStep)
 		for j = 1, 3 do
 			for _, knuckleName in ipairs(handBones[j]) do
 				configui.setSelections(knuckleName, bones["names"])
+				local boneName = configui.getValue(knuckleName .. "_name")
+				if boneName ~= nil and boneName ~= "" then
+					for i, name in ipairs(bones["names"]) do
+						if name == boneName then
+							configui.setValue(knuckleName, i)
+							break
+						end
+					end
+				else
+					configui.setValue(knuckleName .. "_name", bones["names"][configui.getValue(knuckleName)] or "")
+				end
 			end
 		end
 		scanForKnuckleBonesUsingPattern("(ff)_(ii)_(h)")

@@ -6,11 +6,14 @@
         "currentEditingProfile": "default"
     },
     "default": {
+        "adjustBodyMeshPosition": false,
         "adjustForAnimation": false,
         "adjustForEyeOffset": false,
         "aimCamera": "",
         "aimMethod": 1,
+        "autoDetectEyeIndices": false,
         "eyeOffset": 0,
+        "firstStereoViewIndex": 1,
         "fixSpatialAudio": true,
         "headBoneName": "",
         "headOffset": {
@@ -18,15 +21,16 @@
             "Y": 0,
             "Z": 0
         },
-        "isDisabledOverride": false,
-        "optimizeBodyLocationCalculations": true,
-        "optimizeBodyRotationCalculations": true,
+        "isDisabledOverride": true,
+        "optimizeBodyLocationCalculations": false,
+        "optimizeBodyRotationCalculations": false,
         "orientRotationToMovement": 1,
         "pawnPositionAnimationScale": 0.2,
         "pawnPositionMode": 2,
         "pawnPositionSweepMovement": true,
         "pawnRotationLockedSmoothTime": 0.36,
-        "pawnRotationMode": 2,
+        "pawnRotationMode": 5,
+        "pawnRotationModeDisableInEarlyUpdate": false,
         "pawnRotationModeDisableRotation": false,
         "rootBoneName": "",
         "rootOffset": {

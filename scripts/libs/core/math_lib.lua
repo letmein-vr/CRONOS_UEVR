@@ -1,6 +1,8 @@
 local uevrLib = require('libs/core/uevr_lib')
+local plugin = require('libs/core/plugin')
 
 local M = {}
+
 
 function M.print(text, logLevel)
 	print("[math_lib] " .. text)
@@ -77,6 +79,16 @@ function M.vectorSet(v, x, y, z)
 	end
 end
 
+-- Mutate an existing FVector so UEVR hook locals write through instead of replacing userdata.
+function M.assignVectorInPlace(dst, src)
+	if dst == nil or src == nil then
+		return
+	end
+	if src.X ~= nil then dst.X = src.X end
+	if src.Y ~= nil then dst.Y = src.Y end
+	if src.Z ~= nil then dst.Z = src.Z end
+end
+
 function M.vectorCross(a, b, preferKismet)
 	if preferKismet and  kismet_math_library and kismet_math_library.Cross_VectorVector then
 		return kismet_math_library:Cross_VectorVector(a, b)
@@ -118,23 +130,44 @@ function M.vectorSafeNormalize(v)
 	return v * (1.0 / len)
 end
 
+function M.vectorAdd(vec1, vec2)
+	if vec1 == nil and vec2 == nil then return nil end
+	if vec1 == nil then return vec2 end
+	if vec2 == nil then return vec1 end
+	--do it this way so originals are not modified
+	return M.vector(vec1.X + vec2.X, vec1.Y + vec2.Y, vec1.Z + vec2.Z)
+end
+
+-- Reads pitch/yaw/roll in quatFromEuler's field order: X/x (pitch), Y/y (yaw), Z/z (roll) first,
+-- then the rotator names, then array slots.
+local function readEulerFields(euler)
+	local pitch  = euler.X or euler.x or euler.Pitch or euler.pitch or euler[1] or 0.0
+	local yaw = euler.Y or euler.y or euler.Yaw or euler.yaw or euler[2] or 0.0
+	local roll   = euler.Z or euler.z or euler.Roll or euler.roll or euler[3] or 0.0
+	return pitch, yaw, roll
+end
+
 function M.vectorRotate(vec, rot, preferKismet)
 	if preferKismet and kismet_math_library and kismet_math_library.GreaterGreater_VectorRotator then
 		return kismet_math_library:GreaterGreater_VectorRotator(vec, rot)
 	end
 	if vec == nil or rot == nil then return M.vector(0,0,0) end
-	-- build quaternion from rotator (use engine helper if present)
-	local quat = M.quatFromEuler(rot, preferKismet)
 	-- Testing shows kismet_math_library.Quat_MakeFromEuler is twice as slow
-	-- if preferKismet and kismet_math_library and kismet_math_library.Quat_MakeFromEuler then
-	-- 	quat = kismet_math_library:Quat_MakeFromEuler(euler) --this expects roll, pitch yaw i think
-	-- else
-	-- 	quat = M.quatFromEuler(euler, preferKismet)
-	-- end
-
-	-- fallback: if we couldn't make a quaternion, return the input vector unchanged
-	if quat == nil then
-		return vec
+	local qx, qy, qz, qw
+	if preferKismet and kismet_math_library and kismet_math_library.Quat_MakeFromEuler then
+		-- quatFromEuler uses the engine here; keep its result handling.
+		local quat = M.quatFromEuler(rot, preferKismet)
+		-- fallback: if we couldn't make a quaternion, return the input vector unchanged
+		if quat == nil then
+			return vec
+		end
+		qw = quat.W or quat.w or 1.0
+		qx = quat.X or quat.x or 0.0
+		qy = quat.Y or quat.y or 0.0
+		qz = quat.Z or quat.z or 0.0
+	else
+		-- quatFromEuler's Lua path, without the intermediate table.
+		qx, qy, qz, qw = M.quatFromRotator_Components(readEulerFields(rot))
 	end
 
 	-- extract components
@@ -142,19 +175,7 @@ function M.vectorRotate(vec, rot, preferKismet)
 	local vy = vec.Y or vec.y or vec[2] or 0.0
 	local vz = vec.Z or vec.z or vec[3] or 0.0
 
-	local qw = quat.W or quat.w or 1.0
-	local qx = quat.X or quat.x or 0.0
-	local qy = quat.Y or quat.y or 0.0
-	local qz = quat.Z or quat.z or 0.0
-
-	-- v' = v + 2*cross(q_vec, v)*qw + 2*cross(q_vec, cross(q_vec, v))
-	local tx = 2.0 * (qy * vz - qz * vy)
-	local ty = 2.0 * (qz * vx - qx * vz)
-	local tz = 2.0 * (qx * vy - qy * vx)
-
-	local vpx = vx + qw * tx + (qy * tz - qz * ty)
-	local vpy = vy + qw * ty + (qz * tx - qx * tz)
-	local vpz = vz + qw * tz + (qx * ty - qy * tx)
+	local vpx, vpy, vpz = M.vectorRotate_Components(qx, qy, qz, qw, vx, vy, vz)
 
 	if kismet_math_library and kismet_math_library.MakeVector then
 		return kismet_math_library:MakeVector(vpx, vpy, vpz)
@@ -206,6 +227,48 @@ function M.sumRotators(...)
 	return kismet_math_library:MakeRotator(rollTotal, pitchTotal, yawTotal)
 end
 
+-- Compute the world transform of an object that is a child of a parent (e.g. a collider
+-- attached to a motion controller). localPosition and localRotation are defined in the
+-- parent's local space: the offset is rotated by the parent's rotation before being added,
+-- and the rotations are composed (parent-then-child) rather than added component-wise.
+-- Any argument may be nil; returns worldLocation, worldRotation (either may be nil if the
+-- corresponding parent value is missing).
+function M.childWorldTransform(parentLocation, parentRotation, localPosition, localRotation)
+	local worldRotation = parentRotation
+	if parentRotation ~= nil and localRotation ~= nil then
+		worldRotation = M.composeRotators(localRotation, parentRotation)
+	end
+
+	local worldLocation = parentLocation
+	if parentLocation ~= nil and localPosition ~= nil then
+		local offset = parentRotation ~= nil and M.vectorRotate(localPosition, parentRotation) or localPosition
+		worldLocation = M.vectorAdd(parentLocation, offset)
+	end
+
+	return worldLocation, worldRotation
+end
+
+-- compose any number of rotators, skipping any that are nil or zero since they are identity. 
+function M.composeRotators(...)
+	local rotators = {...}
+	local finalRotator = nil
+	for i = 1, #rotators do
+		local rot = rotators[i]
+		if rot ~= nil and (rot.Yaw ~= 0 or rot.Pitch ~= 0 or rot.Roll ~= 0) then
+			if finalRotator == nil then
+				finalRotator = rot
+			else
+				finalRotator = kismet_math_library:ComposeRotators(finalRotator, rot)
+			end
+		end
+	end
+	if finalRotator == nil then
+		finalRotator = M.rotator(0,0,0)
+	end
+	return finalRotator
+end
+
+
 function M.rotatorFromQuat(x, y, z, w)
 	return kismet_math_library:Quat_Rotator(M.quat(x, y, z, w))
 end
@@ -247,121 +310,15 @@ end
 
 -- Build a rotator from X and Z direction vectors. Matches kismet_math_library:MakeRotFromXZ.
 function M.makeRotFromXZ(xVec, zVec, preferKismet)
-	if kismet_math_library and kismet_math_library.MakeRotFromXZ then
+	if preferKismet and kismet_math_library and kismet_math_library.MakeRotFromXZ then
 		return kismet_math_library:MakeRotFromXZ(xVec, zVec)
 	end
-	-- if xVec == nil or zVec == nil then return M.rotator(0,0,0) end
-
-	-- local eps = 1e-9
-	-- local xx = xVec.X or xVec.x or xVec[1] or 0.0
-	-- local xy = xVec.Y or xVec.y or xVec[2] or 0.0
-	-- local xz = xVec.Z or xVec.z or xVec[3] or 0.0
-
-	-- local zx = zVec.X or zVec.x or zVec[1] or 0.0
-	-- local zy = zVec.Y or zVec.y or zVec[2] or 0.0
-	-- local zz = zVec.Z or zVec.z or zVec[3] or 0.0
-
-	-- -- normalize input X
-	-- local xlen = math.sqrt(xx*xx + xy*xy + xz*xz)
-	-- if xlen < eps then return M.rotator(0,0,0) end
-	-- local xnx, xny, xnz = xx / xlen, xy / xlen, xz / xlen
-
-	-- -- make Z orthogonal to X: z' = z - proj_z_on_x
-	-- local dot_zx = (zx * xnx) + (zy * xny) + (zz * xnz)
-	-- local zx_ort_x = zx - dot_zx * xnx
-	-- local zy_ort_x = zy - dot_zx * xny
-	-- local zz_ort_x = zz - dot_zx * xnz
-	-- local zlen = math.sqrt(zx_ort_x*zx_ort_x + zy_ort_x*zy_ort_x + zz_ort_x*zz_ort_x)
-
-	-- local znx, zny, znz
-	-- if zlen < eps then
-	-- 	-- X and Z are nearly parallel; pick an arbitrary axis to build orthonormal basis
-	-- 	-- choose world-up-like vector that's not parallel to X
-	-- 	local ax, ay, az = 0.0, 0.0, 1.0
-	-- 	if math.abs(xnz) > 0.9 then ax, ay, az = 1.0, 0.0, 0.0 end
-	-- 	-- z = normalize(cross(x, arbitrary)) to get a perpendicular vector
-	-- 	znx = (xny * az - xnz * ay)
-	-- 	zny = (xnz * ax - xnx * az)
-	-- 	znz = (xnx * ay - xny * ax)
-	-- 	local znlen = math.sqrt(znx*znx + zny*zny + znz*znz)
-	-- 	if znlen < eps then return M.rotator(0,0,0) end
-	-- 	znx, zny, znz = znx / znlen, zny / znlen, znz / znlen
-	-- 	-- recompute x to be orthogonal: x = cross(y,z) later
-	-- else
-	-- 	znx, zny, znz = zx_ort_x / zlen, zy_ort_x / zlen, zz_ort_x / zlen
-	-- end
-
-	-- -- recompute orthogonal Y = cross(Z, X)
-	-- local ynx = (zny * xnz) - (znz * xny)
-	-- local yny = (znz * xnx) - (znx * xnz)
-	-- local ynz = (znx * xny) - (zny * xnx)
-	-- local ylen = math.sqrt(ynx*ynx + yny*yny + ynz*ynz)
-	-- if ylen < eps then return M.rotator(0,0,0) end
-	-- ynx, yny, ynz = ynx / ylen, yny / ylen, ynz / ylen
-
-	-- -- ensure X is orthogonal and normalized: X = cross(Y, Z)
-	-- local rxx = (yny * znz) - (ynz * zny)
-	-- local rxy = (ynz * znx) - (ynx * znz)
-	-- local rxz = (ynx * zny) - (yny * znx)
-	-- local rlen = math.sqrt(rxx*rxx + rxy*rxy + rxz*rxz)
-	-- if rlen < eps then return M.rotator(0,0,0) end
-	-- rxx, rxy, rxz = rxx / rlen, rxy / rlen, rxz / rlen
-
-	-- -- Build rotation matrix with columns = (X, Y, Z)
-	-- local m00 = rxx; local m01 = ynx; local m02 = znx
-	-- local m10 = rxy; local m11 = yny; local m12 = zny
-	-- local m20 = rxz; local m21 = ynz; local m22 = znz
-
-	-- -- Convert rotation matrix to quaternion
-	-- local trace = m00 + m11 + m22
-	-- local qw, qx, qy, qz = 0,0,0,0
-	-- if trace > 0 then
-	-- 	local s = 0.5 / math.sqrt(trace + 1.0)
-	-- 	qw = 0.25 / s
-	-- 	qx = (m21 - m12) * s
-	-- 	qy = (m02 - m20) * s
-	-- 	qz = (m10 - m01) * s
-	-- else
-	-- 	if m00 > m11 and m00 > m22 then
-	-- 		local s = 2.0 * math.sqrt(1.0 + m00 - m11 - m22)
-	-- 		qw = (m21 - m12) / s
-	-- 		qx = 0.25 * s
-	-- 		qy = (m01 + m10) / s
-	-- 		qz = (m02 + m20) / s
-	-- 	elseif m11 > m22 then
-	-- 		local s = 2.0 * math.sqrt(1.0 + m11 - m00 - m22)
-	-- 		qw = (m02 - m20) / s
-	-- 		qx = (m01 + m10) / s
-	-- 		qy = 0.25 * s
-	-- 		qz = (m12 + m21) / s
-	-- 	else
-	-- 		local s = 2.0 * math.sqrt(1.0 + m22 - m00 - m11)
-	-- 		qw = (m10 - m01) / s
-	-- 		qx = (m02 + m20) / s
-	-- 		qy = (m12 + m21) / s
-	-- 		qz = 0.25 * s
-	-- 	end
-	-- end
-
-	-- -- Prefer engine conversion if available
-	-- -- if kismet_math_library and kismet_math_library.Quat_Rotator then
-	-- -- 	return kismet_math_library:Quat_Rotator(M.quat(qx, qy, qz, qw))
-	-- -- end
-
-	-- -- Fallback: convert quaternion -> Euler
-	-- local sinp = 2.0 * (qw * qy - qz * qx)
-	-- local pitch
-	-- if sinp >= 1.0 then
-	-- 	pitch = math.pi / 2
-	-- elseif sinp <= -1.0 then
-	-- 	pitch = -math.pi / 2
-	-- else
-	-- 	pitch = math.asin(sinp)
-	-- end
-	-- local roll = math.atan(2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx * qx + qy * qy))
-	-- local yaw  = math.atan(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
-	-- local rad2deg = 180.0 / math.pi
-	-- return M.rotator(pitch * rad2deg, yaw * rad2deg, roll * rad2deg)
+	-- Lua fallback when the engine function is unavailable; eulerFromXZ_Components mirrors MakeRotFromXZ.
+	if xVec == nil or zVec == nil then return M.rotator(0,0,0) end
+	local pitch, yaw, roll = M.eulerFromXZ_Components(
+		xVec.X or xVec.x or xVec[1] or 0.0, xVec.Y or xVec.y or xVec[2] or 0.0, xVec.Z or xVec.z or xVec[3] or 0.0,
+		zVec.X or zVec.x or zVec[1] or 0.0, zVec.Y or zVec.y or zVec[2] or 0.0, zVec.Z or zVec.z or zVec[3] or 0.0)
+	return M.rotator(pitch, yaw, roll)
 end
 
 function M.quat(x, y, z, w, reuseable, preferKismet)
@@ -400,22 +357,12 @@ function M.vectorRotate_Quat(vec, quat, preferKismet)
 	local vy = (v.Y or v.y or v[2]) or 0
 	local vz = (v.Z or v.z or v[3]) or 0
 
-	-- t = 2 * cross(q_vec, v)
-	local tx = 2 * ( qy * vz - qz * vy )
-	local ty = 2 * ( qz * vx - qx * vz )
-	local tz = 2 * ( qx * vy - qy * vx )
-
-	-- v' = v + qw * t + cross(q_vec, t)
-	local cx = qy * tz - qz * ty
-	local cy = qz * tx - qx * tz
-	local cz = qx * ty - qy * tx
+	local rx, ry, rz = M.vectorRotate_Components(qx, qy, qz, qw, vx, vy, vz)
 
 	if kismet_math_library and kismet_math_library.MakeVector then
-		return kismet_math_library:MakeVector(vx + qw * tx + cx, vy + qw * ty + cy, vz + qw * tz + cz)
+		return kismet_math_library:MakeVector(rx, ry, rz)
 	end
-	return M.vector(vx + qw * tx + cx, vy + qw * ty + cy, vz + qw * tz + cz)
-
-	--return { X = vx + qw * tx + cx, Y = vy + qw * ty + cy, Z = vz + qw * tz + cz }
+	return M.vector(rx, ry, rz)
 end
 
 function M.quatFromEuler(euler, preferKismet)
@@ -423,24 +370,7 @@ function M.quatFromEuler(euler, preferKismet)
 		return kismet_math_library:Quat_MakeFromEuler(euler)
 	end
 	if euler == nil then return nil end
-	local pitch  = euler.X or euler.x or euler.Pitch or euler.pitch or euler[1] or 0.0
-	local yaw = euler.Y or euler.y or euler.Yaw or euler.yaw or euler[2] or 0.0
-	local roll   = euler.Z or euler.z or euler.Roll or euler.roll or euler[3] or 0.0
-
-	local deg2rad = math.pi / 180.0
-	local hr = (roll  * deg2rad) * 0.5
-	local hp = (pitch * deg2rad) * 0.5
-	local hy = (yaw   * deg2rad) * 0.5
-
-	local sr, cr = math.sin(hr), math.cos(hr)
-	local sp, cp = math.sin(hp), math.cos(hp)
-	local sy, cy = math.sin(hy), math.cos(hy)
-
-	local x = (cr * sp * sy) - (sr * cp * cy)
-	local y = -(cr * sp * cy) - (sr * cp * sy)
-	local z = (cr * cp * sy) - (sr * sp * cy)
-	local w = (cr * cp * cy) + (sr * sp * sy)
-
+	local x, y, z, w = M.quatFromRotator_Components(readEulerFields(euler))
 	return {W = w, X = x, Y = y, Z = z}
 end
 
@@ -607,13 +537,32 @@ function M.vector(...)
 		end
 	end
 
-	local vector = uevrLib.get_struct_object("ScriptStruct /Script/CoreUObject.Vector", reuseable)
-	if vector ~= nil then
-		if vector["X"] ~= nil then vector.X = x else vector.x = x end
-		if vector["Y"] ~= nil then vector.Y = y else vector.y = y end
-		if vector["Z"] ~= nil then vector.Z = z else vector.z = z end
+	--plugin.showDebug = true
+	if uevrLib.extremeCompatibilityMode == false then
+		local vector = uevrLib.get_struct_object("ScriptStruct /Script/CoreUObject.Vector", reuseable)
+		if vector ~= nil then
+			if vector["X"] ~= nil then vector.X = x else vector.x = x end
+			if vector["Y"] ~= nil then vector.Y = y else vector.y = y end
+			if vector["Z"] ~= nil then vector.Z = z else vector.z = z end
+		end
+		return vector
+	else
+		local result = plugin.executeFunction(kismet_math_library, "MakeVector", x, y, z)
+		local val = result and result.ReturnValue or {X=0.0, Y=0.0, Z=0.0}
+		print("Vector Out: " , val.X, val.Y, val.Z)
+		return val
 	end
-	return vector
+	--plugin.showDebug = false
+	-- print("Vector In: " , x, y, z)
+	-- local vector = uevrLib.get_struct_object("ScriptStruct /Script/CoreUObject.Vector", reuseable)
+	-- print("Vector Out: " , vector.X, vector.Y, vector.Z)
+	-- if vector ~= nil then
+	-- 	if vector["X"] ~= nil then vector.X = x else vector.x = x end
+	-- 	if vector["Y"] ~= nil then vector.Y = y else vector.y = y end
+	-- 	if vector["Z"] ~= nil then vector.Z = z else vector.z = z end
+	-- end
+	-- print("Vector Out2: " , vector.X, vector.Y, vector.Z)
+	-- return vector
 
 	--this should work but doesnt, at least in robocop
 	--return kismet_math_library:MakeVector(x, y, z)
@@ -660,7 +609,7 @@ function M.rotator(...)
 		end
 	end
 
-	if kismet_math_library.MakeRotator ~= nil then
+	if uevrLib.extremeCompatibilityMode == false and kismet_math_library.MakeRotator ~= nil then
 		return kismet_math_library:MakeRotator(roll, pitch, yaw)
 	end
 
@@ -712,18 +661,50 @@ function M.getTransform(position, rotation, scale, reuseable)
 	if scale == nil then scale = {X=1.0, Y=1.0, Z=1.0} end
 	local transform = uevrLib.get_struct_object("ScriptStruct /Script/CoreUObject.Transform", reuseable)
 	if transform ~= nil then
-		transform.Translation = vector_3f(position.X, position.Y, position.Z)
-		if rotation == nil then
-			transform.Rotation.X = 0.0
-			transform.Rotation.Y = 0.0
-			transform.Rotation.Z = 0.0
-			transform.Rotation.W = 1.0
+		if uevrLib.extremeCompatibilityMode == false then
+			transform.Translation = vector_3f(position.X, position.Y, position.Z)
+			if rotation == nil then
+				transform.Rotation.X = 0.0
+				transform.Rotation.Y = 0.0
+				transform.Rotation.Z = 0.0
+				transform.Rotation.W = 1.0
+			else
+				transform.Rotation = rotation
+			end
+			transform.Scale3D = vector_3f(scale.X, scale.Y, scale.Z)
 		else
-			transform.Rotation = rotation
+			transform:write_float(0x00, 0.0) -- X
+			transform:write_float(0x04, 0.0) -- Y
+			transform:write_float(0x08, 0.0) -- Z
+			transform:write_float(0x0C, 1.0) -- W (identity)
+			-- FVector Translation @ 0x10
+			transform:write_float(0x10, position.X) -- X
+			transform:write_float(0x14, position.Y) -- Y
+			transform:write_float(0x18, position.Z) -- Z
+			-- pad @ 0x1C
+			-- FVector Scale3D @ 0x20
+			transform:write_float(0x20, scale.X) -- X
+			transform:write_float(0x24, scale.Y) -- Y
+			transform:write_float(0x28, scale.Z) -- Z
 		end
-		transform.Scale3D = vector_3f(scale.X, scale.Y, scale.Z)
 	end
 	return transform
+end
+
+-- Mutate an existing FTransform so UEVR hook locals write through instead of replacing userdata.
+function M.assignTransformInPlace(dst, srcTransform)
+	if dst == nil or srcTransform == nil then
+		return
+	end
+	if srcTransform.Translation ~= nil then
+		dst.Translation = srcTransform.Translation
+	end
+	if srcTransform.Rotation ~= nil then
+		dst.Rotation = srcTransform.Rotation
+	end
+	if srcTransform.Scale3D ~= nil then
+		dst.Scale3D = srcTransform.Scale3D
+	end
 end
 
 function M.vector2D(...)
@@ -766,6 +747,187 @@ function M.vector2D(...)
 		if vector["Y"] ~= nil then vector.Y = y else vector.y = y end
 	end
 	return vector
+end
+
+-- Plain-number helpers (_Components). Quaternions are passed and returned as four numbers (x, y, z, w)
+-- and vectors as three numbers, using Unreal's FQuat/FRotator conventions. They make no engine calls and
+-- allocate no structs, except the rotator-returning functions, which make one MakeRotator call.
+-- Results were checked against KismetMathLibrary (Quat_MakeFromEuler, Get*Vector, ComposeRotators,
+-- RotatorFromAxisAndAngle, MakeRotFromXZ).
+
+local QUAT_SINGULARITY_THRESHOLD = 0.4999995
+
+-- Same as FRotator::Quaternion (and the Lua path of quatFromEuler).
+function M.quatFromRotator_Components(pitch, yaw, roll)
+	local hp = math.rad(pitch) * 0.5
+	local hy = math.rad(yaw) * 0.5
+	local hr = math.rad(roll) * 0.5
+	local sp, cp = math.sin(hp), math.cos(hp)
+	local sy, cy = math.sin(hy), math.cos(hy)
+	local sr, cr = math.sin(hr), math.cos(hr)
+	return (cr * sp * sy) - (sr * cp * cy),
+		-(cr * sp * cy) - (sr * cp * sy),
+		(cr * cp * sy) - (sr * sp * cy),
+		(cr * cp * cy) + (sr * sp * sy)
+end
+
+-- Axis must be normalized.
+function M.quatFromAxisAngle_Components(ax, ay, az, angleDeg)
+	local half = math.rad(angleDeg) * 0.5
+	local s = math.sin(half)
+	return ax * s, ay * s, az * s, math.cos(half)
+end
+
+-- a * b: applies b first, then a (ComposeRotators(B, A) in rotator terms).
+function M.quatMultiply_Components(ax, ay, az, aw, bx, by, bz, bw)
+	return (aw * bx) + (ax * bw) + (ay * bz) - (az * by),
+		(aw * by) - (ax * bz) + (ay * bw) + (az * bx),
+		(aw * bz) + (ax * by) - (ay * bx) + (az * bw),
+		(aw * bw) - (ax * bx) - (ay * by) - (az * bz)
+end
+
+function M.vectorRotate_Components(qx, qy, qz, qw, vx, vy, vz)
+	local tx = 2 * ((qy * vz) - (qz * vy))
+	local ty = 2 * ((qz * vx) - (qx * vz))
+	local tz = 2 * ((qx * vy) - (qy * vx))
+	return vx + (qw * tx) + ((qy * tz) - (qz * ty)),
+		vy + (qw * ty) + ((qz * tx) - (qx * tz)),
+		vz + (qw * tz) + ((qx * ty) - (qy * tx))
+end
+
+-- Projects v onto the plane perpendicular to the unit normal n (ProjectVectorOnToPlane also assumes a
+-- unit normal). Returns the projection and its length.
+function M.vectorProjectOnToPlane_Components(vx, vy, vz, nx, ny, nz)
+	local along = (vx * nx) + (vy * ny) + (vz * nz)
+	vx, vy, vz = vx - (nx * along), vy - (ny * along), vz - (nz * along)
+	return vx, vy, vz, math.sqrt((vx * vx) + (vy * vy) + (vz * vz))
+end
+
+-- Same as vectorSafeNormalize: a length below 0.0001 gives a zero vector.
+function M.vectorSafeNormalize_Components(x, y, z)
+	local len = math.sqrt((x * x) + (y * y) + (z * z))
+	if len < 0.0001 then return 0.0, 0.0, 0.0 end
+	return x / len, y / len, z / len
+end
+
+-- Forward ("X"), right ("Y") or up ("Z") vector of the rotation, like GetForwardVector / GetRightVector / GetUpVector.
+function M.quatAxisVector_Components(qx, qy, qz, qw, axisChar)
+	if axisChar == "X" then
+		return M.vectorRotate_Components(qx, qy, qz, qw, 1.0, 0.0, 0.0)
+	elseif axisChar == "Y" then
+		return M.vectorRotate_Components(qx, qy, qz, qw, 0.0, 1.0, 0.0)
+	end
+	return M.vectorRotate_Components(qx, qy, qz, qw, 0.0, 0.0, 1.0)
+end
+
+-- Mirrors FQuat::Rotator, including the gimbal-pole handling. Returns pitch, yaw, roll in degrees.
+function M.eulerFromQuat_Components(qx, qy, qz, qw)
+	local len = math.sqrt((qx * qx) + (qy * qy) + (qz * qz) + (qw * qw))
+	if len > 0.0 then
+		qx, qy, qz, qw = qx / len, qy / len, qz / len, qw / len
+	end
+	local singularityTest = (qz * qx) - (qw * qy)
+	local yaw = math.deg(math.atan(2.0 * ((qw * qz) + (qx * qy)), 1.0 - (2.0 * ((qy * qy) + (qz * qz)))))
+	local pitch, roll
+	if singularityTest < -QUAT_SINGULARITY_THRESHOLD then
+		pitch = -90.0
+		roll = M.normalizeDeg180(-yaw - math.deg(2.0 * math.atan(qx, qw)))
+	elseif singularityTest > QUAT_SINGULARITY_THRESHOLD then
+		pitch = 90.0
+		roll = M.normalizeDeg180(yaw - math.deg(2.0 * math.atan(qx, qw)))
+	else
+		pitch = math.deg(math.asin(2.0 * singularityTest))
+		roll = math.deg(math.atan(-2.0 * ((qw * qx) + (qy * qz)), 1.0 - (2.0 * ((qx * qx) + (qy * qy)))))
+	end
+	return pitch, yaw, roll
+end
+
+function M.rotatorFromQuat_Components(qx, qy, qz, qw)
+	local pitch, yaw, roll = M.eulerFromQuat_Components(qx, qy, qz, qw)
+	return kismet_math_library:MakeRotator(roll, pitch, yaw)
+end
+
+-- Same math as computeSwingTwistAroundAxis_Rotators on quaternions a (from) and b (to) and the
+-- normalized axis n. Returns twistDeg, then the swing quaternion (x, y, z, w) unless twistOnly.
+function M.computeSwingTwistAroundAxis_Components(ax, ay, az, aw, bx, by, bz, bw, nx, ny, nz, twistOnly)
+	if ((nx * nx) + (ny * ny) + (nz * nz)) < 1e-8 then return nil end
+
+	local rw = (bw * aw) + (bx * ax) + (by * ay) + (bz * az)
+	local rx = (-bw * ax) + (bx * aw) - (by * az) + (bz * ay)
+	local ry = (-bw * ay) + (bx * az) + (by * aw) - (bz * ax)
+	local rz = (-bw * az) - (bx * ay) + (by * ax) + (bz * aw)
+	local n2 = (rw * rw) + (rx * rx) + (ry * ry) + (rz * rz)
+	if n2 < 1e-12 then return 0.0 end
+
+	local dot = (rx * nx) + (ry * ny) + (rz * nz)
+	local twistDeg = math.deg(2.0 * math.atan(dot, rw))
+	if twistOnly then return twistDeg end
+
+	local twx, twy, twz, tww = nx * dot, ny * dot, nz * dot, rw
+	local twistLen2 = (twx * twx) + (twy * twy) + (twz * twz) + (tww * tww)
+	if twistLen2 < 1e-12 then
+		local invRelLen = 1.0 / math.sqrt(n2)
+		return twistDeg, rx * invRelLen, ry * invRelLen, rz * invRelLen, rw * invRelLen
+	end
+	local invTwistLen = 1.0 / math.sqrt(twistLen2)
+	twx, twy, twz, tww = twx * invTwistLen, twy * invTwistLen, twz * invTwistLen, tww * invTwistLen
+
+	local sw = (rw * tww) + (rx * twx) + (ry * twy) + (rz * twz)
+	local sx = (-rw * twx) + (rx * tww) - (ry * twz) + (rz * twy)
+	local sy = (-rw * twy) + (rx * twz) + (ry * tww) - (rz * twx)
+	local sz = (-rw * twz) - (rx * twy) + (ry * twx) + (rz * tww)
+	local swingLen2 = (sw * sw) + (sx * sx) + (sy * sy) + (sz * sz)
+	if swingLen2 < 1e-12 then return twistDeg end
+	local invSwingLen = 1.0 / math.sqrt(swingLen2)
+	return twistDeg, sx * invSwingLen, sy * invSwingLen, sz * invSwingLen, sw * invSwingLen
+end
+
+-- Mirrors kismet MakeRotFromXZ (FRotationMatrix::MakeFromXZ followed by FMatrix::Rotator).
+-- Returns pitch, yaw, roll in degrees.
+function M.eulerFromXZ_Components(xx, xy, xz, zx, zy, zz)
+	local len2 = (xx * xx) + (xy * xy) + (xz * xz)
+	if len2 < 1e-8 then
+		xx, xy, xz = 0.0, 0.0, 0.0
+	else
+		local inv = 1.0 / math.sqrt(len2)
+		xx, xy, xz = xx * inv, xy * inv, xz * inv
+	end
+	len2 = (zx * zx) + (zy * zy) + (zz * zz)
+	if len2 < 1e-8 then
+		zx, zy, zz = 0.0, 0.0, 0.0
+	else
+		local inv = 1.0 / math.sqrt(len2)
+		zx, zy, zz = zx * inv, zy * inv, zz * inv
+	end
+	-- Nearly parallel axes: pick an arbitrary up that is not X.
+	if math.abs(math.abs((xx * zx) + (xy * zy) + (xz * zz)) - 1.0) <= 1e-8 then
+		if math.abs(xz) < (1.0 - 1e-4) then
+			zx, zy, zz = 0.0, 0.0, 1.0
+		else
+			zx, zy, zz = 1.0, 0.0, 0.0
+		end
+	end
+	local yx, yy, yz = (zy * xz) - (zz * xy), (zz * xx) - (zx * xz), (zx * xy) - (zy * xx)
+	len2 = (yx * yx) + (yy * yy) + (yz * yz)
+	if len2 < 1e-8 then
+		yx, yy, yz = 0.0, 0.0, 0.0
+	else
+		local inv = 1.0 / math.sqrt(len2)
+		yx, yy, yz = yx * inv, yy * inv, yz * inv
+	end
+	zx, zy, zz = (xy * yz) - (xz * yy), (xz * yx) - (xx * yz), (xx * yy) - (xy * yx)
+
+	local pitch = math.deg(math.atan(xz, math.sqrt((xx * xx) + (xy * xy))))
+	local yaw = math.deg(math.atan(xy, xx))
+	local yawRad = math.rad(yaw)
+	local syx, syy = -math.sin(yawRad), math.cos(yawRad)
+	local roll = math.deg(math.atan((zx * syx) + (zy * syy), (yx * syx) + (yy * syy)))
+	return pitch, yaw, roll
+end
+
+function M.makeRotFromXZ_Components(xx, xy, xz, zx, zy, zz)
+	local pitch, yaw, roll = M.eulerFromXZ_Components(xx, xy, xz, zx, zy, zz)
+	return kismet_math_library:MakeRotator(roll, pitch, yaw)
 end
 
 function M.init()

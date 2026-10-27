@@ -24,18 +24,13 @@
 local uevrUtils = require("libs/uevr_utils")
 local configui  = require("libs/configui")
 
-local configDef = {
-    {
-        panelLabel = "Cronos Roomscale",
-        saveFile = "roomscale_config",
-        layout = {
-            { widgetType = "checkbox", id = "roomscaleEnabled", label = "Roomscale turning (head drives game view)", initialValue = true },
-            { widgetType = "checkbox", id = "roomscaleBodyFollow", label = "Body follows head 1:1", initialValue = true },
-            { widgetType = "checkbox", id = "roomscalePitch", label = "Head pitch drives game view", initialValue = true },
-        }
-    }
-}
-configui.create(configDef)
+-- Section of the merged "Cronos VR" panel (built by zz_cronos_vr_panel.lua)
+_G.CRONOS_SECTIONS = _G.CRONOS_SECTIONS or {}
+table.insert(_G.CRONOS_SECTIONS, { order = 3, label = "Roomscale", layout = {
+    { widgetType = "checkbox", id = "roomscaleEnabled", label = "Roomscale turning (head drives game view)", initialValue = true },
+    { widgetType = "checkbox", id = "roomscaleBodyFollow", label = "Body follows head 1:1", initialValue = true },
+    { widgetType = "checkbox", id = "roomscalePitch", label = "Head pitch drives game view", initialValue = true },
+}})
 
 local function angDiff(a, b)
     local d = (a - b) % 360

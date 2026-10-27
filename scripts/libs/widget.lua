@@ -1,6 +1,153 @@
+-- Credits: Portions of the following code courtesy of LukasBlaster where noted
+
+--[[
+Usage
+    Drop the lib folder containing this file into your project folder
+    Add code like this in your script:
+		local widgetModule = require('libs/widget')
+
+    Image host widgets
+		UUserWidget is abstract and Lua cannot define new widget classes, so widgetModule.createImageWidget
+		borrows a loaded Widget Blueprint class to act as the host. The host is chosen automatically and generically:
+		it must derive directly from UserWidget and have no Blueprint event graph, so no game logic can run against
+		the replaced content. The host's original widget tree is discarded and replaced with an empty CanvasPanel
+		before the image is added. The chosen class is cached and re-chosen after each level change.
+		To show it in world space use widgetComponent.createImageComponent (libs/widgetcomponent).
+		Images and text can also be added to an existing UserWidget whose root is a CanvasPanel.
+
+	Canvas layout
+		Image:addToWidget, Image:setLayout, Text:addToWidget and Text:setLayout share one opts table:
+			align     - one of widgetModule.Image.ALIGN (Text.ALIGN is the same table). Both anchors are set to that point.
+			alignment - slate alignment vector2D. Defaults to the align point, which pins that point of the widget to the anchor.
+			offset    - vector2D from the anchor. position is used when offset is omitted. Default (0, 0).
+			zOrder    - default 999.
+		A vector2D passed in place of opts (a value with an X field) is treated as position.
+		addToWidget with no opts uses position (50, 50).
+		setLayout and setPosition update a widget that addToWidget has already parented.
+
+	Available functions:
+
+    widgetModule.enableTextureCache - when true, Image:setTexture keeps imported textures by file name and reuses them.
+		Default false. An entry that is no longer a Texture2D is imported again. destroyAll clears the cache.
+
+    widgetModule.Image.ALIGN - anchor points as {x, y} from 0 to 1:
+		TOP_LEFT, TOP_CENTER, TOP_RIGHT, CENTER_LEFT, CENTER, CENTER_RIGHT,
+		BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT.
+		widgetModule.Text.ALIGN is the same table.
+
+    widgetModule.Image.new(maxDim) - creates an image. Call addToWidget to parent it.
+		maxDim is the longest side in slate units (default 128). Aspect ratio is preserved when a texture is set.
+		widgetModule.Image.new(imageName, maxDim) also loads that file immediately via setTexture.
+		Assign image.texture to an already loaded Texture2D before addToWidget to use it in place of a file import.
+        example:
+            local image = widgetModule.Image.new(300)
+            image:setTexture("Stupefy.png")
+            image:addToWidget(widget, {
+                align = widgetModule.Image.ALIGN.BOTTOM_RIGHT,
+                offset = uevrUtils.vector2D(-170, -100),
+            })
+
+    image:setTexture(imageName, (optional)path, (optional)hideIfMissing) - imports
+		"$data/" .. path .. imageName as a Texture2D and sizes the brush so its longest side is maxDim.
+		path defaults to "images/". hideIfMissing defaults to true: a failed import collapses an image that is
+		already on a widget and returns false. Returns true when the texture is applied.
+		Call it before or after addToWidget.
+
+    image:addToWidget(widget, (optional)opts) - parents a UImage on widget's CanvasPanel root.
+		Returns false when widget has no CanvasPanel root or the image could not be created. See Canvas layout.
+
+    image:setLayout(opts) - applies Canvas layout to an image addToWidget has parented, and sets the slot size to the brush.
+    image:setPosition(position2D) - setLayout with that position.
+    image:remove() - RemoveFromParent, then drops the image, slot and texture.
+
+    widgetModule.Text.new((optional)text) - creates a text block. Call addToWidget to parent it.
+		text defaults to "". setText, setColor, setFontSize and setFont store their values and apply them when the
+		TextBlock is created, so they can be called before addToWidget.
+        example:
+            local label = widgetModule.Text.new("12")
+            label:setColor("#F9C046FF")
+            label:setFontSize(20)
+            label:setFont("/Engine/EngineFonts/Roboto.Roboto", "Regular")
+            label:addToWidget(widget, { align = widgetModule.Text.ALIGN.CENTER })
+
+    text:setText(text) - sets the string. 
+    text:setColor(hex) - "#RRGGBB" or "#RRGGBBAA".
+    text:setFontSize(size) - slate font size.
+    text:setFont((optional)fontPath, (optional)typeface) - font asset path, and a typeface name such as
+		"Regular", "Bold", "Italic" or a game face such as "Body". A fontPath applies that font asset.
+		A typeface applies that face. Either argument can be left nil.
+    text:addToWidget(widget, (optional)opts) - parents a UTextBlock on widget's CanvasPanel root.
+		The slot is auto-sized to the text. Returns false when widget has no CanvasPanel root. See Canvas layout.
+    text:setLayout(opts) - applies Canvas layout to text addToWidget has parented. The slot stays auto-sized.
+    text:setPosition(position2D) - setLayout with that position.
+    text:remove() - RemoveFromParent, then drops the text block and slot.
+
+    widgetModule.createHostWidget() - creates an empty host UserWidget whose root is a CanvasPanel.
+		Returns hostWidget or nil if no host widget class could be found or created.
+        example:
+            local host = widgetModule.createHostWidget()
+            image:addToWidget(host, { align = widgetModule.Image.ALIGN.CENTER })
+
+    widgetModule.createImageWidget(imageSize) - creates a host UserWidget containing a single centered Image.
+		Returns hostWidget, image or nil if no host widget class could be found or created.
+		imageSize is the image's maximum dimension. The returned image is a widgetModule.Image, so use
+		image:setTexture("Name.png") to change what it shows.
+        example:
+            local hostWidget, image = widgetModule.createImageWidget(40)
+
+    widgetModule.destroyAll() - destroys every Image and Text this module created, and clears the texture cache
+		and the cached host widget class. Called automatically before level changes and on script reset.
+        example:
+            widgetModule.destroyAll()
+
+    widgetModule.findWidget(widgetTree, widgetName) - first descendant of widgetTree.RootWidget whose short
+		name equals widgetName, or nil. widgetName may be a string or an FName. Replaces UWidgetTree::FindWidget.
+		Walks UPanelWidget children and UContentWidget content.
+        example:
+            local button = widgetModule.findWidget(widget.WidgetTree, "InvisibleButton")
+
+    widgetModule.getWidgetFromName(userWidget, widgetName) - the same search, starting at userWidget.WidgetTree.
+		Replaces UUserWidget::GetWidgetFromName.
+        example:
+            local logo = widgetModule.getWidgetFromName(menu, "LogoImage")
+
+    widgetModule.logWidgetDescendants(userWidget, (optional)logLevel) - logs each descendant as
+		"name [Type]", indented by depth. logLevel defaults to LogLevel.Info.
+        example:
+            widgetModule.logWidgetDescendants(menu)
+
+    widgetModule.getEditableFields(widget) - field descriptors for a widget editor. Each entry is
+		{ id, label, kind, get, set, options, min, max, step }. Actions use invoke in place of set.
+		kind is "readonly", "enum", "bool", "number", "color", "vector2", "asset" or "action".
+		Every widget includes name and type, plus visibility, enabled, render opacity, remove and layout
+		prepass when the widget exposes them. Image brush color, size and source are included when the
+		widget exposes brush functions.
+        example:
+            local fields = widgetModule.getEditableFields(logo)
+
+    widgetModule.dumpWidgetEditableFields(userWidget) - walks the widget tree, writes widget_parameters.json
+		and returns the same table: { root = shortName, tree = { name, type, fields, children } }.
+		Each field record stores label, kind, whether get/set/invoke exist, the current value, and enum options.
+		Returns nil when userWidget or its WidgetTree is invalid.
+        example:
+            widgetModule.dumpWidgetEditableFields(menu)
+
+    widgetModule.setLogLevel(val) - sets the logging level for widget messages
+        example:
+            widgetModule.setLogLevel(LogLevel.Debug)
+
+    widgetModule.print(text, (optional)logLevel) - prints a message at the given (or Debug) log level
+        example:
+            widgetModule.print("Host widget ready")
+
+
+]]--
+
 local uevrUtils = require('libs/uevr_utils')
+local plugin = require('libs/core/plugin')
 
 local M = {}
+M.enableTextureCache = false
 
 local currentLogLevel = LogLevel.Error
 function M.setLogLevel(val)
@@ -12,6 +159,365 @@ function M.print(text, logLevel)
         uevrUtils.print("[widget] " .. text, logLevel)
     end
 end
+
+local Image = {}
+Image.__index = Image
+Image.createdImages = {}
+Image.textureCache = {}
+Image.ALIGN = {
+	TOP_LEFT      = {0,   0},
+	TOP_CENTER    = {0.5, 0},
+	TOP_RIGHT     = {1,   0},
+	CENTER_LEFT   = {0,   0.5},
+	CENTER        = {0.5, 0.5},
+	CENTER_RIGHT  = {1,   0.5},
+	BOTTOM_LEFT   = {0,   1},
+	BOTTOM_CENTER = {0.5, 1},
+	BOTTOM_RIGHT  = {1,   1},
+}
+function Image.new(imageName, maxDim)
+	local self = setmetatable({}, Image)
+	if type(imageName) == "number" and maxDim == nil then
+		maxDim = imageName
+		imageName = nil
+	end
+	self.maxDim = maxDim or 128
+	self.drawSize = uevrUtils.vector2D(self.maxDim, self.maxDim)
+	self.image = nil
+	self.slot = nil
+	self.texture = nil
+	if imageName then
+		self:setTexture(imageName)
+	end
+	table.insert(Image.createdImages, self)
+	return self
+end
+function Image.destroyAll()
+	for i = 1, #Image.createdImages do
+		local inst = Image.createdImages[i]
+		if inst ~= nil and inst.remove ~= nil then
+			inst:remove()
+		end
+	end
+	Image.createdImages = {}
+	Image.textureCache = {}
+end
+
+function Image:setTexture(imageName, path, hideIfMissing)
+	if hideIfMissing == nil then hideIfMissing = true end
+    if path == nil then path = "images/" end
+	local function hideMissing()
+		if hideIfMissing and self.image ~= nil then
+			self.image:SetVisibility(1) -- Collapsed
+		end
+		return false
+	end
+	local function importTexture()
+		local result = plugin.executeFunction(kismet_rendering_library, "ImportFileAsTexture2D", uevrUtils.get_world(), "$data/" .. path .. imageName)
+		local texture = result and result.ReturnValue
+		if uevrUtils.getValid(texture) == nil then return nil end
+		if M.enableTextureCache then
+			Image.textureCache[imageName] = texture
+		end
+		return texture
+	end
+
+	local texture = nil
+	if M.enableTextureCache then
+		texture = Image.textureCache[imageName]
+		if uevrUtils.getValid(texture) == nil then
+			texture = nil
+			Image.textureCache[imageName] = nil
+		end
+	end
+	if texture == nil then
+		texture = importTexture()
+		if texture == nil then return hideMissing() end
+	end
+	-- stale/recycled cache entries can pass getValid but lose Texture2D methods
+	if texture.Blueprint_GetSizeX == nil or texture.Blueprint_GetSizeY == nil then
+		if M.enableTextureCache then
+			Image.textureCache[imageName] = nil
+		end
+		texture = importTexture()
+		if texture == nil or texture.Blueprint_GetSizeX == nil or texture.Blueprint_GetSizeY == nil then
+			return hideMissing()
+		end
+	end
+
+	self.texture = texture
+	local w, h = texture:Blueprint_GetSizeX(), texture:Blueprint_GetSizeY()
+	if w > 0 and h > 0 then
+		local scale = self.maxDim / math.max(w, h)
+		self.drawSize = uevrUtils.vector2D(w * scale, h * scale)
+	else
+		self.drawSize = uevrUtils.vector2D(self.maxDim, self.maxDim)
+	end
+	if self.image ~= nil then
+		self.image:SetBrushFromTexture(texture, true)
+		self.image:SetBrushSize(self.drawSize)
+		self.image:SetVisibility(0) -- Visible
+		if self.slot ~= nil then
+			self.slot:SetSize(self.drawSize)
+		end
+	end
+	return true
+end
+
+local function setSlotLayout(slot, opts)
+	opts = opts or {}
+
+	local offset = opts.offset or opts.position or uevrUtils.vector2D(0, 0)
+	local align = opts.align
+
+	local ax, ay = 0, 0
+	if align ~= nil then
+		if type(align) ~= "table" or align[1] == nil then return false end
+		ax, ay = align[1], align[2]
+	end
+
+	local pt = uevrUtils.vector2D(ax, ay)
+	local anchors = slot:GetAnchors()
+	anchors.Minimum = pt
+	anchors.Maximum = pt
+	slot:SetAnchors(anchors)
+	slot:SetAlignment(opts.alignment or pt)
+	slot:SetPosition(offset)
+	slot:SetZOrder(opts.zOrder or 999)
+	return true
+end
+
+function Image:setLayout(opts)
+	if self.slot == nil then return end
+	if setSlotLayout(self.slot, opts) then
+		self.slot:SetSize(self.drawSize)
+	end
+end
+
+function Image:addToWidget(widget, opts)
+	if widget == nil or widget.WidgetTree == nil then return false end
+	local panel = widget.WidgetTree.RootWidget
+	if panel == nil or panel.AddChildToCanvas == nil then return false end
+	if self.image == nil then
+		self.image = uevrUtils.spawn_object("Class /Script/UMG.Image", widget.WidgetTree)
+		if self.image == nil then return false end
+		if self.texture ~= nil then
+			self.image:SetBrushFromTexture(self.texture, true)
+			self.image:SetBrushSize(self.drawSize)
+		else
+			self.image:SetBrushSize(self.drawSize)
+			self.image:SetVisibility(1) -- Collapsed until setTexture
+		end
+		self.slot = panel:AddChildToCanvas(self.image)
+	end
+	if opts ~= nil and opts.X ~= nil then
+		opts = { position = opts }
+	end
+	self:setLayout(opts or { position = uevrUtils.vector2D(50, 50) })
+	return true
+end
+
+function Image:setPosition(position2D)
+	self:setLayout({ position = position2D })
+end
+
+function Image:remove()
+	if uevrUtils.getValid(self.image) ~= nil and self.image.RemoveFromParent ~= nil then
+		self.image:RemoveFromParent()
+	end
+	self.image = nil
+	self.slot = nil
+	self.texture = nil
+end
+
+M.Image = Image
+
+local Text = {}
+Text.__index = Text
+Text.createdTexts = {}
+Text.ALIGN = Image.ALIGN
+function Text.new(text)
+	local self = setmetatable({}, Text)
+	self.text = text or ""
+	self.textBlock = nil
+	self.slot = nil
+	table.insert(Text.createdTexts, self)
+	return self
+end
+function Text.destroyAll()
+	for i = 1, #Text.createdTexts do
+		local inst = Text.createdTexts[i]
+		if inst ~= nil and inst.remove ~= nil then
+			inst:remove()
+		end
+	end
+	Text.createdTexts = {}
+end
+
+-- Native UEVR Lua cannot marshal FText, so SetText goes through the plugin
+function Text:setText(text)
+	self.text = text or ""
+	if self.textBlock ~= nil then
+		plugin.executeFunction(self.textBlock, "SetText", self.text)
+	end
+end
+
+-- hex is "#RRGGBB" or "#RRGGBBAA"
+function Text:setColor(hex)
+	self.color = hex
+	if self.textBlock == nil or type(hex) ~= "string" then return end
+	local function channel(i, default) return (tonumber(hex:sub(i, i + 1), 16) or default) / 255 end
+	local color = self.textBlock.ColorAndOpacity
+	color.SpecifiedColor = uevrUtils.color_from_rgba(channel(2, 0), channel(4, 0), channel(6, 0), channel(8, 255))
+	self.textBlock:SetColorAndOpacity(color)
+end
+
+-- Font and Size FName casing varies between game sessions
+local function applyFont(text)
+	if text.textBlock == nil or (text.fontSize == nil and text.fontPath == nil and text.typeface == nil) then return end
+	local font = text.textBlock.Font or text.textBlock.font
+	if text.fontSize ~= nil then
+		if font.Size ~= nil then font.Size = text.fontSize else font.size = text.fontSize end
+	end
+	if text.fontPath ~= nil then
+		local fontObject = uevrUtils.getLoadedAsset(text.fontPath)
+		if fontObject ~= nil then font.FontObject = fontObject end
+	end
+	if text.typeface ~= nil then
+		font.TypefaceFontName = uevrUtils.fname_from_string(text.typeface)
+	end
+	text.textBlock:SetFont(font)
+end
+
+function Text:setFontSize(size)
+	self.fontSize = size
+	applyFont(self)
+end
+
+-- fontPath is a font asset path e.g. "/Engine/EngineFonts/Roboto.Roboto", typeface is optional e.g. "Regular", "Bold", "Italic"
+function Text:setFont(fontPath, typeface)
+	self.fontPath = fontPath
+	self.typeface = typeface
+	applyFont(self)
+end
+
+function Text:setLayout(opts)
+	if self.slot == nil then return end
+	if setSlotLayout(self.slot, opts) then
+		self.slot:SetAutoSize(true)
+	end
+end
+
+function Text:addToWidget(widget, opts)
+	if widget == nil or widget.WidgetTree == nil then return false end
+	local panel = widget.WidgetTree.RootWidget
+	if panel == nil or panel.AddChildToCanvas == nil then return false end
+	if self.textBlock == nil then
+		self.textBlock = uevrUtils.spawn_object("Class /Script/UMG.TextBlock", widget.WidgetTree)
+		if self.textBlock == nil then return false end
+		self.slot = panel:AddChildToCanvas(self.textBlock)
+		self:setText(self.text)
+		if self.color ~= nil then self:setColor(self.color) end
+		applyFont(self)
+	end
+	if opts ~= nil and opts.X ~= nil then
+		opts = { position = opts }
+	end
+	self:setLayout(opts or { position = uevrUtils.vector2D(50, 50) })
+	return true
+end
+
+function Text:setPosition(position2D)
+	self:setLayout({ position = position2D })
+end
+
+function Text:remove()
+	if uevrUtils.getValid(self.textBlock) ~= nil and self.textBlock.RemoveFromParent ~= nil then
+		self.textBlock:RemoveFromParent()
+	end
+	self.textBlock = nil
+	self.slot = nil
+end
+
+M.Text = Text
+
+-----------------------------------------------------------------
+-- Inspiration and portions of the following code courtesy of LukasBlaster
+local hostWidgetClassName = nil
+-- UUserWidget is abstract and Lua cannot define new widget classes, so borrow a loaded Widget Blueprint class.
+-- Direct UserWidget children with no ubergraph have no native or Blueprint logic to run against the replaced tree.
+local function getGenericUserWidgetClassName()
+	if hostWidgetClassName ~= nil then return hostWidgetClassName end
+	local userWidgetName = "Class /Script/UMG.UserWidget"
+	local blueprintClass = uevrUtils.get_class("Class /Script/UMG.WidgetBlueprintGeneratedClass")
+	-- Including defaults yields a CDO for every loaded widget class, live or not
+	for _, widget in pairs(uevrUtils.find_all_instances(userWidgetName, true) or {}) do
+		local cls = widget:get_class()
+		local super = cls:get_super_struct()
+        --check that the widget we are trying to hijack does not aleady have blueprint functions or c++ functions
+        --that might cause unexpected behavior. If no widgets are found using this restriction for some reason this check could be relaxed
+		--native classes have no UberGraphFunction field at all, so require a Blueprint class
+		if super ~= nil and super:get_full_name() == userWidgetName and cls:is_a(blueprintClass) and cls.UberGraphFunction == nil then
+			hostWidgetClassName = cls:get_full_name()
+			M.print("Using host widget class " .. hostWidgetClassName)
+			return hostWidgetClassName
+		end
+	end
+	M.print("No host widget class found", LogLevel.Warning)
+end
+
+-- Creates an empty host UserWidget. The host's original tree is replaced with a fresh CanvasPanel root
+function M.createHostWidget()
+	local className = getGenericUserWidgetClassName()
+	if className == nil then return nil end
+	local hostWidget = uevrUtils.getValid(uevrUtils.createWidget(className))
+	if hostWidget == nil then return nil end
+	hostWidget.WidgetTree.RootWidget = uevrUtils.spawn_object("Class /Script/UMG.CanvasPanel", hostWidget.WidgetTree)
+	return hostWidget
+end
+
+-- Creates a host UserWidget containing a centered Image
+function M.createImageWidget(imageSize)
+	local hostWidget = M.createHostWidget()
+	if hostWidget == nil then return nil end
+	local image = Image.new(imageSize)
+	image:addToWidget(hostWidget, { align = Image.ALIGN.CENTER })
+	return hostWidget, image
+end
+-----------------------------------------------------------------
+
+function M.destroyAll()
+	Image.destroyAll()
+	Text.destroyAll()
+	hostWidgetClassName = nil
+end
+
+uevrUtils.registerPreLevelChangeCallback(function()
+	M.destroyAll()
+end)
+
+uevr.params.sdk.callbacks.on_script_reset(function()
+	M.destroyAll()
+end)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 local function normalizeWidgetName(widgetName)
     if widgetName == nil then return nil end
@@ -560,4 +1066,75 @@ function M.dumpWidgetEditableFields(userWidget)
     return parameters
 end
 
+-- Nested timings are inclusive. Toggle and report with uevrUtils.profiler.
+setSlotLayout = uevrUtils.profiler:wrap("Widget: set slot layout", setSlotLayout)
+applyFont = uevrUtils.profiler:wrap("Widget: apply font", applyFont)
+getGenericUserWidgetClassName = uevrUtils.profiler:wrap("Widget: find host class", getGenericUserWidgetClassName)
+traverseWidgetDescendants = uevrUtils.profiler:wrap("Widget: traverse descendants", traverseWidgetDescendants)
+saveParameters = uevrUtils.profiler:wrap("Widget: save parameters", saveParameters)
+
+Image.new = uevrUtils.profiler:wrap("Widget: new image", Image.new)
+Image.destroyAll = uevrUtils.profiler:wrap("Widget: destroy images", Image.destroyAll)
+Image.setTexture = uevrUtils.profiler:wrap("Widget: set texture", Image.setTexture)
+Image.setLayout = uevrUtils.profiler:wrap("Widget: set image layout", Image.setLayout)
+Image.addToWidget = uevrUtils.profiler:wrap("Widget: add image", Image.addToWidget)
+Image.remove = uevrUtils.profiler:wrap("Widget: remove image", Image.remove)
+
+Text.new = uevrUtils.profiler:wrap("Widget: new text", Text.new)
+Text.destroyAll = uevrUtils.profiler:wrap("Widget: destroy texts", Text.destroyAll)
+Text.setText = uevrUtils.profiler:wrap("Widget: set text", Text.setText)
+Text.setColor = uevrUtils.profiler:wrap("Widget: set text color", Text.setColor)
+Text.setFontSize = uevrUtils.profiler:wrap("Widget: set font size", Text.setFontSize)
+Text.setFont = uevrUtils.profiler:wrap("Widget: set font", Text.setFont)
+Text.setLayout = uevrUtils.profiler:wrap("Widget: set text layout", Text.setLayout)
+Text.addToWidget = uevrUtils.profiler:wrap("Widget: add text", Text.addToWidget)
+Text.remove = uevrUtils.profiler:wrap("Widget: remove text", Text.remove)
+
+M.createHostWidget = uevrUtils.profiler:wrap("Widget: create host", M.createHostWidget)
+M.createImageWidget = uevrUtils.profiler:wrap("Widget: create image widget", M.createImageWidget)
+M.destroyAll = uevrUtils.profiler:wrap("Widget: destroy all", M.destroyAll)
+M.findWidget = uevrUtils.profiler:wrap("Widget: find widget", M.findWidget)
+M.getWidgetFromName = uevrUtils.profiler:wrap("Widget: get widget from name", M.getWidgetFromName)
+M.logWidgetDescendants = uevrUtils.profiler:wrap("Widget: log descendants", M.logWidgetDescendants)
+M.getEditableFields = uevrUtils.profiler:wrap("Widget: get editable fields", M.getEditableFields)
+M.dumpWidgetEditableFields = uevrUtils.profiler:wrap("Widget: dump editable fields", M.dumpWidgetEditableFields)
+
 return M
+
+--[[
+[info] CanvasPanel_0
+[info]   InvisibleButton
+[info]   LogoContainer
+[info]     LogoImage
+[info]   PressKeyPromptOverlay
+[info]     PressKeyPrompt
+[info]     XboxTextblockContainer
+[info]       LeftSidePrompt
+[info]       Image_0
+[info]       RightSidePrompt
+[info]   GammaSelection
+[info]   ContentOverlay
+[info]     MainOptions
+[info]     ExtraOptions
+[info]     DeliverablesOptions
+[info]     MenuDLCManager
+[info]     UserNameTextBlock
+[info]     VersionTextBlock
+[info]   AutosaveSplashOverlay
+[info]     VerticalBox_0
+[info]       AutosaveSplashText
+[info]       SavingSpinnerWidget
+[info]   CreditsWidget
+[info]   LegalWidget
+[info]   SavingWidget_BP
+]]--
+-- register_key_bind("F2", function()
+-- 	local userWidget = uevrUtils.getActiveWidgetByClass("WidgetBlueprintGeneratedClass /Game/UI/Menus/MainMenu/MainMenu.MainMenu_C")
+-- 	if userWidget ~= nil then
+-- 		print("Main menu widget found:")
+-- 		--widgetModule.logWidgetDescendants(userWidget)
+-- 		widgetModule.dumpWidgetEditableFields(userWidget)
+-- 	else
+-- 		print("No main menu widget found")
+-- 	end
+-- end)

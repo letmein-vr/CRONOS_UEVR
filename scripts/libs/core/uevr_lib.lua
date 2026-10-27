@@ -1,6 +1,8 @@
 
 local M = {}
 
+M.extremeCompatibilityMode = false
+
 local classCache = {}
 local structCache = {}
 
@@ -11,7 +13,7 @@ end
 function M.find_required_object(name)
     local obj = uevr.api:find_uobject(name)
     if not obj then
-        M.print("Cannot find " .. name)
+        print("[uevr_lib] *********** Can not find required object:" .. name)
         return nil
     end
 
@@ -23,10 +25,10 @@ function M.get_class(name, clearCache)
 	if name == nil then return nil end
 	if clearCache or classCache[name] == nil then
 		local ok, result = pcall(function()
-			return uevr.api:find_uobject(name)
+			return M.find_required_object(name)
 		end)
 		if not ok then
-			print("[uevr_utils] Error finding class in get_class handled properly", name, result)
+			print("[uevr_lib] Error finding class in get_class handled properly", name, result)
 			return nil
 		end
 		classCache[name] = result
@@ -37,7 +39,7 @@ end
 
 function M.find_default_instance(className)
 	local class =  M.get_class(className)
-	if class ~= nil and class.get_first_object_matching ~= nil then
+	if class ~= nil and class.get_class_default_object ~= nil then
 		return class:get_class_default_object()
 	end
 	return nil
@@ -54,7 +56,14 @@ end
 function M.find_all_instances(className, includeDefault)
 	local class =  M.get_class(className)
 	if class ~= nil and class.get_objects_matching ~= nil then
-		return class:get_objects_matching(includeDefault)
+		local ok, result = pcall(function()
+			return class:get_objects_matching(includeDefault)
+		end)
+		if ok then
+			return result
+		else
+			print("[uevr_lib] Error finding all instances in find_all_instances handled properly", className, result)
+		end
 	end
 	return nil
 end
@@ -126,5 +135,6 @@ function M.find_instance_of(className, objectName)
 	end
 	return nil
 end
+
 
 return M

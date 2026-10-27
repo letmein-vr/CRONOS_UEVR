@@ -62,7 +62,18 @@ Usage
     montage.getDeveloperConfigurationWidgets(options) - gets developer configuration UI widgets
         example:
             local widgets = montage.getDeveloperConfigurationWidgets()
+
+    montage.onUpdate(stateKey, func) - registers a callback invoked when a montage state value changes.
+        Callback receives (value, priority). value may be true, false, or nil (default/cleared).
+        Valid stateKey values: hands, leftArm, rightArm, pawnBody, pawnArms, pawnArmBones,
+        motionSicknessCompensation, inputEnabled, leftAccessory, rightAccessory
+        example:
+            montage.onUpdate("pawnArmBones", function(value)
+                print("pawnArmBones changed:", value)
+            end)
 ]]--
+
+--TODO add a filter to get rid of random number montages
 
 local uevrUtils = require("libs/uevr_utils")
 local configui = require("libs/configui")
@@ -139,10 +150,13 @@ local function refreshAccessorySelections()
 	end
 
 	-- Update selections if the UI is already created.
-	pcall(function()
+	local ok, err = pcall(function()
 		configui.setSelections("leftAccessoryWhenActive", accessorySelectionLabels)
 		configui.setSelections("rightAccessoryWhenActive", accessorySelectionLabels)
 	end)
+	if not ok then
+		M.print("Error updating accessory selections: " .. err)
+	end
 end
 
 local function guidToAccessoryIndex(guid)
@@ -188,6 +202,7 @@ local helpText = "This module allows you to configure how montages (animations) 
 local configWidgets = spliceableInlineArray{
 }
 
+local widgetPrefix = "uevr_montage_"
 local developerWidgets = spliceableInlineArray{
 	{
 		widgetType = "tree_node",
@@ -376,6 +391,12 @@ local developerWidgets = spliceableInlineArray{
         {
             widgetType = "end_group",
         },
+		{
+			widgetType = "checkbox",
+			id = widgetPrefix .. "ignore_generic",
+			label = "Ignore Unnamed Montages",
+			initialValue = true
+		},
 		{ widgetType = "new_line" },
        	{
             widgetType = "input_text_multiline",
@@ -442,7 +463,7 @@ local function showMontageEditFields()
         end
     end
 end
-
+						 							 														 								
 -- local function updateMontageList()
 --     montageList = {}
 -- 	montageIDList = {}
@@ -518,11 +539,15 @@ local createDevMonitor = doOnce(function()
 				isParametersDirty = true
 			end
 			if parameters["montagelist"][montageName] == nil then
-				parameters["montagelist"][montageName] = {}
-				parameters["montagelist"][montageName]["label"] = label .. " " .. montageName
-				parameters["montagelist"][montageName]["class_name"] = montageObject:get_full_name()
-				isParametersDirty = true
-				updateMontageList()
+				if configui.getValue(widgetPrefix .. "ignore_generic") == true and uevrUtils.startsWith(montageName, "AnimMontage_") then
+					--dont save generic named montage
+				else
+					parameters["montagelist"][montageName] = {}
+					parameters["montagelist"][montageName]["label"] = label .. " " .. montageName
+					parameters["montagelist"][montageName]["class_name"] = montageObject:get_full_name()
+					isParametersDirty = true
+					updateMontageList()
+				end
 			elseif parameters["montagelist"][montageName]["class_name"] == nil then
 				parameters["montagelist"][montageName]["class_name"] = montageObject:get_full_name()
 				isParametersDirty = true
@@ -608,8 +633,10 @@ local function executeMontageChange(...)
 end
 
 local function handleMontageChanged(montage, montageName, label, animInstance)
-	print("Montage changed: " .. tostring(montageName))
+	--print("Montage changed: " .. tostring(montageName))
+	local previous = {}
 	for _, config in ipairs(stateConfig) do
+		previous[config.stateKey] = montageState[config.stateKey]
 		montageState[config.stateKey] = nil
 		montageState[config.stateKey .. "Priority"] = 0
 	end
@@ -622,6 +649,12 @@ local function handleMontageChanged(montage, montageName, label, animInstance)
 			elseif config.kind == "accessory" then
 				updateAccessoryStateIfHigherPriority(data, config.stateKey, config.valueKey)
 			end
+		end
+	end
+
+	for _, config in ipairs(stateConfig) do
+		if previous[config.stateKey] ~= montageState[config.stateKey] then
+			uevrUtils.executeUEVRCallbacksWithPriorityResult("montage_state_change_" .. config.stateKey, montageState[config.stateKey], montageState[config.stateKey .. "Priority"])
 		end
 	end
 
@@ -747,7 +780,7 @@ function M.setPlaybackRate(montage, label, rate)
 	local animInstance, montageObject = getAnimInstanceForMontage(montage, label)
 	if animInstance ~= nil then
 		animInstance:Montage_SetPlayRate(montageObject, rate or 1.0)
-		print("Set playback rate to " .. tostring(rate) .. " for montage " .. montageObject:get_full_name() .. " on " .. tostring(label))
+		--print("Set playback rate to " .. tostring(rate) .. " for montage " .. montageObject:get_full_name() .. " on " .. tostring(label))
 	end
 end
 
@@ -916,9 +949,15 @@ function M.playMontage(montageName, speed)
 		local className = parameters["montagelist"][montageName]["class_name"]
 		if className ~= nil then
 			--this should be get_class so it caches
-			local montage = uevrUtils.find_required_object(className)
-			if montage ~= nil then
-				local result = pawn:PlayAnimMontage(montage, speed or 1.0, uevrUtils.fname_from_string(""))
+			local montage = uevrUtils.get_class(className)
+			if montage ~= nil and pawn.PlayAnimMontage ~= nil then
+				local ok, result = pcall(function()
+					return pawn:PlayAnimMontage(montage, speed or 1.0, uevrUtils.fname_from_string(""))
+				end)
+				if not ok then
+					print("Error playing montage " .. montageName .. ": " .. result)
+				end
+				--local result = pawn:PlayAnimMontage(montage, speed or 1.0, uevrUtils.fname_from_string(""))
 			end
 		end
 	end
@@ -926,6 +965,12 @@ end
 -- Returns recent montages as a newline-delimited string
 function M.getRecentMontagesAsString()
     return table.concat(recentMontages, "\n")
+end
+function M.getMontageClassName(montageName)
+	if parameters ~= nil and montageName ~= nil and montageName ~= "" and parameters["montagelist"][montageName] ~= nil then
+		return parameters["montagelist"][montageName]["class_name"]
+	end
+	return nil
 end
 
 hands.registerIsAnimatingFromMeshCallback(function(hand)
@@ -972,6 +1017,12 @@ function M.registerMontageChangeCallback(func)
     if func ~= nil and type(func) == "function" then
 	    uevrUtils.registerUEVRCallback("on_module_montage_change", func)
     end
+end
+
+function M.onUpdate(stateKey, func)
+	if stateKey ~= nil and stateKey ~= "" and type(stateKey) == "string" and type(func) == "function" then
+		uevrUtils.registerUEVRCallback("montage_state_change_" .. stateKey, func)
+	end
 end
 
 -- Register update handlers for all state configs and their priorities

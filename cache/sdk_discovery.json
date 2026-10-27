@@ -25,7 +25,7 @@
         "time_date_stamp": 3017430934,
         "version_ls": 0,
         "version_ms": 65540,
-        "write_time": 134370905234529365
+        "write_time": 134375157982233429
       },
       "payload": {
         "vtable_index": 4
@@ -40,7 +40,7 @@
         "time_date_stamp": 3017430934,
         "version_ls": 0,
         "version_ms": 65540,
-        "write_time": 134370905234529365
+        "write_time": 134375157982233429
       },
       "payload": {
         "frame_count_offset": 18396,
@@ -58,7 +58,7 @@
         "time_date_stamp": 3017430934,
         "version_ls": 0,
         "version_ms": 65540,
-        "write_time": 134370905234529365
+        "write_time": 134375157982233429
       },
       "payload": {
         "rva": 64985440
@@ -73,7 +73,7 @@
         "time_date_stamp": 3017430934,
         "version_ls": 0,
         "version_ms": 65540,
-        "write_time": 134370905234529365
+        "write_time": 134375157982233429
       },
       "payload": {
         "render_target_offset": 48,

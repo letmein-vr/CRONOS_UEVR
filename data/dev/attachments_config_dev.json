@@ -91,7 +91,14 @@
         0.0,
         0.0
     ],
+    "uevr_attachments_CronosCharacterPlay_BP_C_SK_Flashlight_02_sights_rotation_offset": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "uevr_attachments_CronosCharacterPlay_BP_C_SK_Flashlight_02_strip_child_suffix_length": false,
     "uevr_attachments_CronosCharacterPlay_BP_C_SK_Flashlight_02_use_laser": false,
+    "uevr_attachments_CronosCharacterPlay_BP_C_SK_Flashlight_02_weight": 0,
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_end_time": 0.0,
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_existing_guid": 1,
     "uevr_attachments_MultiModeGun_C_RootComponent_accessory_item_activation_distance": 7.5,
@@ -179,6 +186,32 @@
         0.0,
         0.0
     ],
+    "uevr_attachments_MultiModeGun_C_RootComponent_sights_rotation_offset": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "uevr_attachments_MultiModeGun_C_RootComponent_strip_child_suffix_length": false,
     "uevr_attachments_MultiModeGun_C_RootComponent_use_laser": false,
+    "uevr_attachments_MultiModeGun_C_RootComponent_weight": 0,
+    "uevr_attachments_left_hand_flip_x": false,
+    "uevr_attachments_left_hand_flip_y": false,
+    "uevr_attachments_left_hand_flip_z": false,
+    "uevr_attachments_left_hand_position": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "uevr_attachments_left_hand_rotation": [
+        0.0,
+        0.0,
+        0.0
+    ],
+    "uevr_attachments_left_hand_scale": [
+        1.0,
+        1.0,
+        1.0
+    ],
+    "uevr_attachments_use_left_hand_offsets": false,
     "use_uevr_attachments_strip_parent_name_numeric_suffix": false
 }

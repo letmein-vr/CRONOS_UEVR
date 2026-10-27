@@ -18,7 +18,7 @@ local reticule    = require('libs/reticule')
 uevrUtils.setLogLevel(LogLevel.Debug)
 uevrUtils.setLogToFile(true)
 hands.setLogLevel(LogLevel.Debug)
-attachments.setLogLevel(LogLevel.Debug)
+attachments.setLogLevel(LogLevel.Warning) -- Debug logs every attach / detach step
 
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Attachment options for both weapons
@@ -60,6 +60,113 @@ local flashlightOptions = {
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 attachments.init(true)
 reticule.init(false)
+
+-- ─────────────────────────────────────────────────────────────────
+-- Hands mode: VR hands (glove hands cut from the Traveler mesh) OR the
+-- full-arm IK rig (libs/ik). Ported from the Hellraiser profile.
+-- They are mutually exclusive: both register the same animation ids
+-- with hands_animation, so only one may exist at a time.
+-- The rig is parented to the HMD (ik_parameters.json parent_type 2),
+-- not the pawn: character materials dither when the camera is close to
+-- the root of their attachment chain, and anything rooted on the pawn
+-- sits right next to the VR eye.
+-- ─────────────────────────────────────────────────────────────────
+local ik = require('libs/ik')
+
+-- libs/ik.lua requires libs/input, whose tick / stereo / xinput callbacks run as soon as it's loaded
+-- (init() only adds its panel): aim method, pawn rotation and position modes, controller rotation overrides,
+-- stick turning of the root. Cronos's look direction and body yaw belong to roomscale_turn.lua (pawn.View),
+-- so it is kept off through its own "isDisabledOverride" (true in data/input_parameters.json); the Input dev
+-- panel (init(true)) shows its settings and can switch it on for testing.
+require('libs/input').init(false, LogLevel.Warning) -- false = no Input dev panel
+
+local HANDS_MODE_HANDS   = 1
+local HANDS_MODE_IK      = 2
+
+-- Section of the merged "Cronos VR" panel (built by zz_cronos_vr_panel.lua)
+_G.CRONOS_SECTIONS = _G.CRONOS_SECTIONS or {}
+table.insert(_G.CRONOS_SECTIONS, { order = 1, label = "Hands", layout = {
+    { widgetType = "combo", id = "hands_mode", label = "Hands", initialValue = HANDS_MODE_HANDS, selections = {"Hands", "IK Arms"} },
+    { widgetType = "text", id = "hands_mode_status", label = "Status: -" },
+    { widgetType = "text", label = "-- Flashlight on the IK forearm (lowerarm_twist_01_l)" },
+    { widgetType = "slider_float", id = "ikFlOffX",     label = "IK Flashlight Offset X",  initialValue = 0.0, range = {-40.0, 40.0} },
+    { widgetType = "slider_float", id = "ikFlOffY",     label = "IK Flashlight Offset Y",  initialValue = 0.0, range = {-40.0, 40.0} },
+    { widgetType = "slider_float", id = "ikFlOffZ",     label = "IK Flashlight Offset Z",  initialValue = 0.0, range = {-40.0, 40.0} },
+    { widgetType = "slider_float", id = "ikFlRotPitch", label = "IK Flashlight Rot Pitch", initialValue = 0.0, range = {-180.0, 180.0} },
+    { widgetType = "slider_float", id = "ikFlRotYaw",   label = "IK Flashlight Rot Yaw",   initialValue = 0.0, range = {-180.0, 180.0} },
+    { widgetType = "slider_float", id = "ikFlRotRoll",  label = "IK Flashlight Rot Roll",  initialValue = 0.0, range = {-180.0, 180.0} },
+}})
+
+-- IK Arms mode (the rig replaces the glove hands)
+local function isIKMode()
+    local v = configui.getValue("hands_mode")
+    return v == HANDS_MODE_IK
+end
+_G.cronosIsIKMode = isIKMode
+
+-- The component each hand's attachments hang off: the glove hand, or the
+-- single IK rig mesh (it carries both arms and the same sockets).
+local function getHandMesh(hand)
+    if isIKMode() then
+        return ik.getCurrentMesh()
+    end
+    return hands.getHandComponent(hand)
+end
+_G.cronosGetHandMesh = getHandMesh
+
+-- After a rebuild the hand components start in the open pose: hands_animation
+-- only re-applies the weapon grip pose on a grip change or an input edge.
+local function refreshWeaponPoses()
+    for _, ms in ipairs({300, 1200}) do
+        uevrUtils.setTimeout(ms, function()
+            pcall(function()
+                hands.updateAnimationState(Handed.Right)
+                hands.updateAnimationState(Handed.Left)
+            end)
+        end)
+    end
+end
+
+ik.registerOnMeshCreatedCallback(function(meshList, rig)
+    refreshWeaponPoses()
+    -- the flamethrower / harvester hang off the hand sockets; move them onto the new rig
+    if _G.cronosAttachWeaponsToHands ~= nil then
+        uevrUtils.setTimeout(100, function() pcall(_G.cronosAttachWeaponsToHands) end)
+    end
+end)
+ik.init(false, LogLevel.Warning) -- false = no IK dev panel (true to tune the rig)
+-- libs/ik auto-creates a rig by default; buildHands() turns it on only in the IK modes
+ik.setAutoCreateArms(false)
+
+local function buildHands()
+    controllers.createController(0)  -- left  MotionControllerComponent
+    controllers.createController(1)  -- right MotionControllerComponent
+    controllers.createController(2)  -- HMD (the IK rig's parent)
+
+    if isIKMode() then
+        hands.setAutoCreateHands(false)
+        hands.destroyHands()
+        ik.setAutoCreateArms(true) -- the 1 s auto-create builds the rig from ik_parameters.json + hands_parameters.json
+        configui.setLabel("hands_mode_status", "Status: IK Arms")
+        return
+    end
+
+    ik.setAutoCreateArms(false)
+    if ik.exists() then ik.destroyAll() end
+    hands.destroyHands() -- hands.reset() only forgets a pair (leaks live components)
+    hands.createFromConfig('hands_parameters', 'Main', 'Shared')
+    hands.setAutoCreateHands(true)
+    refreshWeaponPoses()
+    configui.setLabel("hands_mode_status", "Status: Hands")
+end
+
+-- Switching the mode at runtime: tear down the current setup and build the other one in place.
+configui.onUpdate("hands_mode", function(value)
+    uevrUtils.setTimeout(1, function() -- configui callbacks run on the draw thread; build on the game thread
+        buildHands()
+        if _G.cronosAttachWeaponsToHands ~= nil then pcall(_G.cronosAttachWeaponsToHands) end
+    end)
+end)
 
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Pawn / mesh helpers
@@ -127,6 +234,32 @@ local function getFlashlight(pawn)
     return nil
 end
 
+-- IK modes: the flashlight rides the IK rig's forearm. The attachments library places it on the glove's
+-- lowerarm_l with offsets tuned for the glove, whose arm bones are not anatomical (57 cm off the bone), so on
+-- the IK arm it hung far from the hand and swung with every forearm move. Here it goes on
+-- lowerarm_twist_01_l (near the wrist; libs/ik.lua rolls it with the wrist, like a strap) with its own
+-- offsets (ikFl* in the Hands section).
+local IK_FLASH_BONE = "lowerarm_twist_01_l"
+local ikFlashBoneFName = nil
+local ikFlashHit = uevrUtils.get_struct_object("ScriptStruct /Script/Engine.HitResult")
+
+local function ensureFlashlightOnIKForearm(pawn)
+    if not isIKMode() then return end
+    local rig = uevrUtils.getValid(ik.getCurrentMesh())
+    local fl = getFlashlight(pawn)
+    if rig == nil or fl == nil then return end
+    if ikFlashBoneFName == nil then ikFlashBoneFName = uevrUtils.fname_from_string(IK_FLASH_BONE) end
+    if fl.AttachParent ~= rig or fl.AttachSocketName:to_string() ~= IK_FLASH_BONE then
+        -- 0 = EAttachmentRule::KeepRelative (the relative transform is set right below)
+        fl:K2_AttachToComponent(rig, ikFlashBoneFName, 0, 0, 0, false)
+        print("[hands] Flashlight parented to the IK forearm")
+    end
+    fl:K2_SetRelativeLocationAndRotation(
+        uevrUtils.vector(configui.getValue("ikFlOffX") or 0, configui.getValue("ikFlOffY") or 0, configui.getValue("ikFlOffZ") or 0),
+        uevrUtils.rotator(configui.getValue("ikFlRotPitch") or 0, configui.getValue("ikFlRotYaw") or 0, configui.getValue("ikFlRotRoll") or 0),
+        false, ikFlashHit, false)
+end
+
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Flashlight SpotLight â†’ Left Controller via UObjectHook
 -- We find the SpotLightComponent named 'Light' inside Flashlight_BP_C
@@ -166,6 +299,76 @@ local function findFlashlightSpot()
     end
     print("[hands] Target SpotLightComponent not found yet")
     return nil
+end
+
+-- ─────────────────────────────────────────────────────────────────
+-- Weapon reticule (2026-10-26, after the Hellraiser profile's uevrmenus.lua)
+-- The game's own reticle for the active weapon mode (manageReticles below) is drawn as a 3D widget on the line from
+-- the eye to where the gun is aimed: a trace from MuzzlePoint along the gun root's right vector - the same muzzle
+-- and axis CronosAimFix fires along (root forward rotated 90 deg about root up), so the reticle shows where shots
+-- land and follows the barrel when two-handing pivots the gun. It sits at the hit, or at the max distance along
+-- the barrel when nothing is hit. (It used to be traced from the right controller's forward, which is not where
+-- the barrel points.)
+-- ─────────────────────────────────────────────────────────────────
+_G.CRONOS_SECTIONS = _G.CRONOS_SECTIONS or {}
+table.insert(_G.CRONOS_SECTIONS, { order = 5, label = "Weapon Reticule", layout = {
+    { widgetType = "checkbox", id = "enable3DReticle", label = "Enable VR weapon reticule", initialValue = true },
+    { widgetType = "slider_float", id = "ret_brightness", label = "Reticule brightness", range = {1.0, 20.0}, initialValue = 10.0, speed = 0.1 },
+    { widgetType = "slider_float", id = "ret_distance", label = "Reticule max distance (cm)", range = {100.0, 5000.0}, initialValue = 1000.0, speed = 10.0 },
+    { widgetType = "checkbox", id = "ret_constant_size", label = "Keep the same apparent size at any distance", initialValue = true },
+    { widgetType = "slider_float", id = "ret_size", label = "Reticule size", range = {0.2, 5.0}, initialValue = 1.0, speed = 0.01 },
+}})
+local RETICULE_SIZE_REFERENCE = 200 -- cm: with constant size on, "size 1" looks the way the reticule did at 200 cm
+local RETICULE_COLLISION_PULLBACK = 10 -- cm: libs/reticule.lua draws it this far in front of a hit
+
+local function retNum(id, default)
+    local v = configui.getValue(id)
+    return type(v) == "number" and v or default
+end
+
+local function updateWeaponReticule()
+    if not reticule.exists() then return end
+    local pawn = getPawn()
+    local root = pawn ~= nil and getGunRoot(pawn) or nil
+    local muzzle = nil
+    pcall(function() muzzle = uevrUtils.getValid(pawn.WeaponPlayerComponent.MultiModeGun.MuzzlePoint) end)
+    if root == nil or muzzle == nil or inCutscene then
+        reticule.setHidden(true)
+        reticule.update() -- applies the hidden state
+        return
+    end
+    reticule.setHidden(false)
+
+    -- Brightness = the 3D component's tint (applied in its material, unclipped; Hellraiser does the same). The
+    -- widget's own colour can't do it: it renders into an 8-bit target, so anything above 1.0 stayed dark grey.
+    local component = reticule.getComponent()
+    if component ~= nil and component.SetTintColorAndOpacity ~= nil then
+        local b = retNum("ret_brightness", 10.0)
+        local t = component.TintColorAndOpacity
+        if t == nil or math.abs(t.R - b) > 0.001 then
+            component:SetTintColorAndOpacity(uevrUtils.color_from_rgba(b, b, b, 1.0))
+        end
+    end
+
+    local maxDistance = retNum("ret_distance", 1000.0)
+    local origin = muzzle:K2_GetComponentLocation()
+    local direction = root:GetRightVector()
+    local ignore = { pawn }
+    pcall(function() table.insert(ignore, pawn.WeaponPlayerComponent.MultiModeGun) end)
+    local target = uevrUtils.getTargetLocation(origin, direction, 0, ignore, false, 10, maxDistance)
+    if target == nil then
+        target = uevrUtils.vector(origin.X + direction.X * maxDistance, origin.Y + direction.Y * maxDistance, origin.Z + direction.Z * maxDistance)
+    end
+
+    -- the library draws it on the eye -> target line, at most maxDistance away (nearer when the target is nearer)
+    local eye = reticule.getOriginPositionFromController()
+    local size = retNum("ret_size", 1.0)
+    if configui.getValue("ret_constant_size") ~= false and eye ~= nil then
+        local dx, dy, dz = target.X - eye.X, target.Y - eye.Y, target.Z - eye.Z
+        local drawn = math.min(maxDistance, math.sqrt(dx * dx + dy * dy + dz * dz) - RETICULE_COLLISION_PULLBACK)
+        size = size * math.max(drawn, 1.0) / RETICULE_SIZE_REFERENCE
+    end
+    reticule.update(eye, target, maxDistance, { size, size, size })
 end
 
 uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
@@ -220,11 +423,7 @@ uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
     end
 
     -- â”€â”€ Reticle: update 3D position â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    if reticule.exists() then
-        pcall(function()
-            reticule.update(nil, reticule.getTargetLocationFromController(Handed.Right))
-        end)
-    end
+    pcall(updateWeaponReticule)
 end)
 
 
@@ -300,15 +499,10 @@ local gunNativeAttach = nil  -- { root, parent, socket, loc, rot }
 local gunProxy = nil
 local gunProxyPawn = nil
 
-configui.create({
-    {
-        panelLabel = "Cronos Weapon",
-        saveFile = "weapon_parenting_config",
-        layout = {
-            { widgetType = "checkbox", id = "gunOnController", label = "Gun on controller (fixes gun/right hand dither)", initialValue = true },
-        }
-    }
-})
+_G.CRONOS_SECTIONS = _G.CRONOS_SECTIONS or {}
+table.insert(_G.CRONOS_SECTIONS, { order = 4, label = "Weapon", layout = {
+    { widgetType = "checkbox", id = "gunOnController", label = "Gun on controller (fixes gun/right hand dither)", initialValue = true },
+}})
 
 local restoreGunToNativeParent  -- forward declaration (defined below)
 
@@ -324,13 +518,40 @@ local function getGunProxy(pawn, controller)
         if gunProxy == nil then return nil end
         print("[hands] Created gun proxy component on pawn")
     end
-    if gunProxy.AttachParent ~= controller then
+    -- IK modes: the proxy hangs on the IK arm mesh, not on the controller. A MotionControllerComponent moves
+    -- everything under it to the newest controller pose on the render thread (low latency update); the IK arm
+    -- has no such update, so a gun under the controller was always drawn ahead of the arm holding it.
+    -- two_handed_integration.lua (IK weapon lock) puts the proxy where the controller was when the arm pose
+    -- was solved.
+    local rig = isIKMode() and uevrUtils.getValid(ik.getCurrentMesh()) or nil
+    if rig ~= nil then
+        if gunProxy.AttachParent ~= rig then
+            -- 1 = EAttachmentRule::KeepWorld (stays put until the lock places it)
+            gunProxy:K2_AttachToComponent(rig, uevrUtils.fname_from_string("None"), 1, 1, 1, false)
+            print("[hands] Gun proxy parented to the IK arm mesh")
+        end
+    elseif gunProxy.AttachParent ~= controller then
         -- 2 = EAttachmentRule::SnapToTarget
         gunProxy:K2_AttachToComponent(controller, uevrUtils.fname_from_string("None"), 2, 2, 2, false)
     end
     return gunProxy
 end
 
+-- two_handed_integration.lua (IK weapon lock) places the gun by moving this proxy: the proxy while the gun
+-- hangs on it, else nil
+_G.cronosGetGunProxy = function()
+    if gunProxy == nil or uevrUtils.getValid(gunProxy) == nil or inCutscene then return nil end
+    local pawn = getPawn()
+    local root = pawn ~= nil and getGunRoot(pawn) or nil
+    if root == nil or root.AttachParent ~= gunProxy then return nil end
+    return gunProxy
+end
+
+-- The gun is an attachments-library attachment on the proxy (see the grip callback): the library recognises
+-- it (Attachments Config, grip animation) and owns its offset on the proxy. This keeps the proxy (and so the
+-- gun's place relative to the hand) up to date and records the gun's native parent for cutscenes.
+-- (It used to go through attachToRawController, whose UObjectHook state re-placed the gun on the raw
+-- controller at render time: in IK modes that drew it ahead of the IK arm.)
 local function ensureGunOnController(pawn)
     local root = getGunRoot(pawn)
     local controller = controllers.getController(1)
@@ -356,9 +577,8 @@ local function ensureGunOnController(pawn)
         }
     end
 
-    -- 1 = EAttachmentRule::KeepWorld
-    root:K2_AttachToComponent(proxy, uevrUtils.fname_from_string("None"), 1, 1, 1, false)
-    print("[hands] Gun root parented to controller proxy")
+    -- the game re-parented the gun (equip, melee): the library puts it back on the proxy with its offsets now
+    pcall(attachments.forceGripUpdate)
 end
 
 -- ─────────────────────────────────────────────────────────────────
@@ -442,6 +662,7 @@ local function enterCutscene(pawn)
 
     -- 3. Hide VR hand PMCs
     hands.hideHands(true)
+    pcall(function() ik.hide(true) end)
 
     -- 4. Show pawn.Mesh (per-tick also enforces this every frame)
     if pawn ~= nil then
@@ -556,6 +777,7 @@ local function exitCutscene()
 
     -- 4. Show VR hand PMCs
     hands.hideHands(false)
+    pcall(function() ik.hide(false) end)
 
     -- 5. Re-attach flamethrower + harvester to hand PMCs.
     --    Delayed 200 ms to let UObjectHook fully re-enable first.
@@ -624,6 +846,7 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
         if pawn ~= nil then
             pcall(ensureGunOnController, pawn)
             pcall(ensureMuzzleOnBarrel, pawn)
+            pcall(ensureFlashlightOnIKForearm, pawn)
             pcall(function()
                 -- 1. Force pawn.Mesh hidden
                 local pawnMesh = uevrUtils.getValid(pawn.Mesh)
@@ -712,10 +935,21 @@ attachments.registerOnGripUpdateCallback(function()
 
     local gunRoot    = getGunRoot(pawn)    -- right hand
     local flashlight = getFlashlight(pawn) -- left  hand
-    
-    local leftHandMesh = hands.getHandComponent(Handed.Left)
+    -- IK modes: the flashlight goes on the IK forearm instead (ensureFlashlightOnIKForearm); nil makes the
+    -- library release it, and flashlightOptions leave it where it is
+    if isIKMode() then flashlight = nil end
+    -- Right: the gun on the pawn-owned proxy (getGunProxy: on the right controller in Hands mode, on the IK
+    -- arm mesh in IK modes), like Atomic Heart attaches to its hand meshes. Not the raw controller: its
+    -- UObjectHook state re-placed the gun on the controller at render time, ahead of the IK arm.
+    -- "Gun on controller" off: the old raw-controller path.
+    local gunMesh = nil
+    if gunRoot ~= nil and configui.getValue("gunOnController") ~= false then
+        gunMesh = getGunProxy(pawn, controllers.getController(1))
+    end
 
-    return gunRoot,    nil, nil,                   -- right: raw controller
+    local leftHandMesh = getHandMesh(Handed.Left)
+
+    return gunRoot,    gunMesh, "",                -- right: gun proxy (nil mesh = raw controller)
            flashlight, leftHandMesh, "lowerarm_l", -- left:  poseable mesh component
            gunOptions, flashlightOptions
 end)
@@ -728,8 +962,8 @@ attachWeaponsToHands = function()
     local p = getPawn()
     if p == nil then return false end
 
-    local rightPMC = hands.getHandComponent(Handed.Right)
-    local leftPMC  = hands.getHandComponent(Handed.Left)
+    local rightPMC = getHandMesh(Handed.Right)
+    local leftPMC  = getHandMesh(Handed.Left)
     if rightPMC == nil or leftPMC == nil then return false end
 
     local flamethrower = uevrUtils.getValid(p.FlamethrowerSM)
@@ -749,6 +983,7 @@ attachWeaponsToHands = function()
 
     return true
 end
+_G.cronosAttachWeaponsToHands = attachWeaponsToHands
 
 -- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- Manage reticles: forces native reticles to 100% opacity and
@@ -793,7 +1028,9 @@ local function manageReticles()
                         local widget = retComp.ReticleWidget
                         if widget ~= nil then
                             -- Use a raw Lua table so UEVR auto-casts it to the exact struct type expected.
-                            -- Crank RGB to 10.0 for HDR brightness so it's stark white in VR.
+                            -- Crank RGB to 10.0 so the widget's own image renders fully white (it is drawn into
+                            -- an 8-bit render target, so this clips at white; the VR brightness is the 3D
+                            -- reticule component's tint, see updateWeaponReticule).
                             local color = {R = 10.0, G = 10.0, B = 10.0, A = 1.0}
                             pcall(function() widget:SetColorAndOpacity(color) end)
                             pcall(function() widget:SetRenderOpacity(100) end)
@@ -838,14 +1075,7 @@ local attachTimer  = nil
 local reticleTimer = nil
 
 function on_level_change(level)
-    controllers.createController(0)  -- left  MotionControllerComponent
-    controllers.createController(1)  -- right MotionControllerComponent
-    hands.reset()
-
-    local paramsFile    = 'hands_parameters'
-    local configName    = 'Main'
-    local animationName = 'Shared'
-    hands.createFromConfig(paramsFile, configName, animationName)
+    buildHands()
 
     -- Weapon PMC attachments
     if attachTimer ~= nil then
@@ -876,6 +1106,20 @@ end
 -- -----------------------------------------------------------------
 gestures.autoDetectGesture(gestures.Gesture.PUNCH, true, Handed.Right)
 
+-- Punch trigger speed (libs/gestures "punch.minThresholdSpeed", default 180): how fast the right controller must
+-- move forward for the melee punch. Set through the library's own config channel ("on_gesture_config_param_change",
+-- which saves the parameter and re-applies it to the punch detectors); getConfigurationWidgets registers that
+-- listener (its widgets aren't shown). Not persisted in gesture_parameters.json: the panel value is the source.
+_G.CRONOS_SECTIONS = _G.CRONOS_SECTIONS or {}
+table.insert(_G.CRONOS_SECTIONS, { order = 6, label = "Melee", layout = {
+    { widgetType = "slider_int", id = "punch_min_speed", label = "Punch speed needed (cm/s, higher = harder to trigger)", initialValue = 180, range = {50, 800} },
+}})
+pcall(gestures.getConfigurationWidgets)
+configui.onCreateOrUpdate("punch_min_speed", function(value)
+    if type(value) ~= "number" then return end
+    uevrUtils.executeUEVRCallbacks("on_gesture_config_param_change", {"punch", "minThresholdSpeed"}, value, false)
+end)
+
 local punchResetTimer = nil
 
 uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
@@ -883,11 +1127,11 @@ uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
     if hasPunch then
         local handsAnimation = require("libs/hands_animation")
         handsAnimation.setHoldingAttachment(Handed.Right, "punch")
-        
+
         if punchResetTimer ~= nil then
             uevrUtils.clearTimeout(punchResetTimer)
         end
-        
+
         punchResetTimer = uevrUtils.setTimeout(1500, function()
             handsAnimation.setHoldingAttachment(Handed.Right, nil)
             punchResetTimer = nil
