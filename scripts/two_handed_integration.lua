@@ -18,8 +18,11 @@
 --
 -- Flashlight toggle: put the right controller inside the flashlight zone (a sphere at the left hand plus the
 -- fl offsets, radius flDetectRadius) and press right grip. The grip is hidden from the game (no melee).
+-- Head-mounted flashlight mode (flashlight_mode 2: spotlight on the HMD, mesh hidden, see hands.lua): press
+-- left grip with the left controller inside the head zone (HMD plus the hlZone offsets, radius hlZoneRadius)
+-- instead. That press is hidden from the game until released (no mine throw, no two-hand grab).
 --
--- Debug spheres ("Show debug spheres" in Dev Config) mark the grip point and the flashlight zone centre.
+-- Debug spheres ("Show debug spheres" in Dev Config) mark the grip point and the flashlight / head zone centre.
 
 local twoHandedAiming = require("libs/two_handed_aiming")
 local controllers = require("libs/controllers")
@@ -141,6 +144,9 @@ local flSearchTime         = 0
 local punchAnimationActive = false -- true for 1.5s after a punch fires
 local cachedFlashShaft     = nil   -- cached FlashlightShaft StaticMeshComponent
 local flashZoneOverlapping = false -- true when the right controller is inside the flashlight zone
+local headZoneOverlapping  = false -- head-mounted mode: true when the left controller is inside the head zone
+local leftGripWasDown      = false -- edge-detection for left grip (head-mounted toggle)
+local headGripHeld         = false -- the left grip press that toggled the light, kept from the game until released
 
 -- two-handing
 local active          = false   -- two-handing right now
@@ -384,8 +390,12 @@ table.insert(_G.CRONOS_SECTIONS, { order = 2, label = "Two-Handed Aiming", layou
             { widgetType = "slider_float", id = "flDetectRadius", label = "FL Zone Radius (cm)", initialValue = 15.0, range = {3.0, 40.0} },
 }})
 
--- The flashlight's spotlight on the left controller (applied by hands.lua), saved per weapon
+-- The flashlight's spotlight (applied by hands.lua): on the left controller, saved per weapon, or on the HMD
+-- (head-mounted mode, not per weapon)
 table.insert(_G.CRONOS_SECTIONS, { order = 4.5, label = "Flashlight Spotlight", layout = {
+            { widgetType = "combo", id = "flashlight_mode", label = "Flashlight", initialValue = 1, selections = {"On the left arm", "Head-mounted (no mesh, left grip at the head toggles)"} },
+            { widgetType = "spacing" },
+            { widgetType = "text", label = "-- On the left arm: spotlight on the left controller (per weapon)" },
             { widgetType = "text", id = "sl_weapon_label", label = "Saved for weapon: None" },
             { widgetType = "slider_float", id = "slOffX",    label = "Spotlight Offset X",    initialValue = 0.0, range = {-50.0, 50.0} },
             { widgetType = "slider_float", id = "slOffY",    label = "Spotlight Offset Y",    initialValue = 0.0, range = {-50.0, 50.0} },
@@ -393,7 +403,25 @@ table.insert(_G.CRONOS_SECTIONS, { order = 4.5, label = "Flashlight Spotlight", 
             { widgetType = "slider_float", id = "slRotPitch",label = "Spotlight Rot Pitch",   initialValue = 0.0, range = {-180.0, 180.0} },
             { widgetType = "slider_float", id = "slRotYaw",  label = "Spotlight Rot Yaw",     initialValue = 0.0, range = {-180.0, 180.0} },
             { widgetType = "slider_float", id = "slRotRoll", label = "Spotlight Rot Roll",    initialValue = 0.0, range = {-180.0, 180.0} },
+            { widgetType = "spacing" },
+            { widgetType = "text", label = "-- Head-mounted: spotlight on the HMD" },
+            { widgetType = "slider_float", id = "hlOffX",    label = "Head Light Offset X",   initialValue = 0.0, range = {-30.0, 30.0} },
+            { widgetType = "slider_float", id = "hlOffY",    label = "Head Light Offset Y",   initialValue = 0.0, range = {-30.0, 30.0} },
+            { widgetType = "slider_float", id = "hlOffZ",    label = "Head Light Offset Z",   initialValue = 0.0, range = {-30.0, 30.0} },
+            { widgetType = "slider_float", id = "hlRotPitch",label = "Head Light Rot Pitch",  initialValue = 0.0, range = {-180.0, 180.0} },
+            { widgetType = "slider_float", id = "hlRotYaw",  label = "Head Light Rot Yaw",    initialValue = 0.0, range = {-180.0, 180.0} },
+            { widgetType = "slider_float", id = "hlRotRoll", label = "Head Light Rot Roll",   initialValue = 0.0, range = {-180.0, 180.0} },
+            { widgetType = "text", label = "-- Head toggle zone (HMD space: X forward, Y right, Z up; left controller + left grip)" },
+            { widgetType = "slider_float", id = "hlZoneX",   label = "Head Zone Offset X",    initialValue = 0.0, range = {-40.0, 40.0} },
+            { widgetType = "slider_float", id = "hlZoneY",   label = "Head Zone Offset Y",    initialValue = 0.0, range = {-40.0, 40.0} },
+            { widgetType = "slider_float", id = "hlZoneZ",   label = "Head Zone Offset Z",    initialValue = 0.0, range = {-40.0, 40.0} },
+            { widgetType = "slider_float", id = "hlZoneRadius", label = "Head Zone Radius (cm)", initialValue = 20.0, range = {5.0, 40.0} },
 }})
+
+-- flashlight_mode 2 (hands.lua reads the same id)
+local function isHeadLight()
+    return configui.getValue("flashlight_mode") == 2
+end
 
 -- Saved per weapon. GEOMETRY ids (the weapon's own values) fall back to their default when a weapon has none;
 -- the flashlight toggle zone ids keep the previous weapon's value instead.
@@ -971,8 +999,11 @@ local function resetLevelState()
     cachedFlashFL         = nil
     cachedFlashShaft      = nil
     flashZoneOverlapping  = false
+    headZoneOverlapping   = false
     flSearchTime          = 0
     rightGripWasDown      = false
+    leftGripWasDown       = false
+    headGripHeld          = false
     punchAnimationActive  = false
     inGrabZone            = false
     destroyMarkers()
@@ -1143,24 +1174,39 @@ end, LOCK_AFTER_SOLVE)
 
 local lastIKMode = nil
 
-local function updateFlashlight(rightHand)
-    -- toggle zone: around the left glove (Hands mode) or the left controller (IK modes)
+local function updateFlashlight(rightHand, leftHand)
+    local headMode = isHeadLight()
     flashZoneOverlapping = false
-    local anchor, socket = nil, ""
-    if not isIKMode() then
-        anchor, socket = hands.getHandComponent(Handed.Left), "root"
-        if not isAlive(anchor) then anchor = nil end
-    end
-    if anchor == nil then anchor, socket = controllers.getController(0), "" end
-    local center = nil
-    if anchor ~= nil then
-        pcall(function()
-            center = kismet_math_library:TransformLocation(socketTransform(anchor, socket), uevrUtils.vector(
-                configui.getValue("flOffX") or 0, configui.getValue("flOffY") or 0, configui.getValue("flOffZ") or 0))
-            flashZoneOverlapping = distance(rightHand:K2_GetComponentLocation(), center) <= (configui.getValue("flDetectRadius") or 15)
-        end)
+    headZoneOverlapping = false
+    local center, headCenter = nil, nil
+    if headMode then
+        -- head-mounted: toggle zone around the HMD, entered with the left controller
+        local hmd = controllers.getController(2)
+        if hmd ~= nil then
+            pcall(function()
+                headCenter = kismet_math_library:TransformLocation(componentTransform(hmd), uevrUtils.vector(
+                    configui.getValue("hlZoneX") or 0, configui.getValue("hlZoneY") or 0, configui.getValue("hlZoneZ") or 0))
+                headZoneOverlapping = distance(leftHand:K2_GetComponentLocation(), headCenter) <= (configui.getValue("hlZoneRadius") or 20)
+            end)
+        end
+    else
+        -- toggle zone: around the left glove (Hands mode) or the left controller (IK modes)
+        local anchor, socket = nil, ""
+        if not isIKMode() then
+            anchor, socket = hands.getHandComponent(Handed.Left), "root"
+            if not isAlive(anchor) then anchor = nil end
+        end
+        if anchor == nil then anchor, socket = controllers.getController(0), "" end
+        if anchor ~= nil then
+            pcall(function()
+                center = kismet_math_library:TransformLocation(socketTransform(anchor, socket), uevrUtils.vector(
+                    configui.getValue("flOffX") or 0, configui.getValue("flOffY") or 0, configui.getValue("flOffZ") or 0))
+                flashZoneOverlapping = distance(rightHand:K2_GetComponentLocation(), center) <= (configui.getValue("flDetectRadius") or 15)
+            end)
+        end
     end
     setMarker("flash", center)
+    setMarker("flash_head", headCenter)
 
     -- spotlight / shaft visibility enforcement
     local now = os.clock()
@@ -1173,11 +1219,14 @@ local function updateFlashlight(rightHand)
     end
     if cachedFlashFL ~= nil and not pcall(function() cachedFlashFL:get_full_name() end) then cachedFlashFL = nil end
     if cachedFlashShaft ~= nil and not pcall(function() cachedFlashShaft:get_full_name() end) then cachedFlashShaft = nil end
-    for _, comp in pairs({ cachedFlashFL or false, cachedFlashShaft or false }) do
-        if comp then
+    -- head-mounted: no light shaft (it belongs to the hidden arm flashlight and would sit in front of the eyes)
+    local visibleStates = { { cachedFlashFL, flashlightOn }, { cachedFlashShaft, flashlightOn and not headMode } }
+    for _, entry in ipairs(visibleStates) do
+        local comp, on = entry[1], entry[2]
+        if comp ~= nil then
             pcall(function()
-                comp:SetVisibility(flashlightOn, true)
-                comp:SetHiddenInGame(not flashlightOn, true)
+                comp:SetVisibility(on, true)
+                comp:SetHiddenInGame(not on, true)
             end)
         end
     end
@@ -1239,7 +1288,7 @@ local function doStereoBody()
         end
     end
 
-    updateFlashlight(rightHand)
+    updateFlashlight(rightHand, leftHand)
 
     if not ikMode then updateLeftHome(hands.getHandComponent(Handed.Left)) end
 
@@ -1329,20 +1378,36 @@ end)
 uevrUtils.registerOnPreInputGetStateCallback(function(retval, user_index, state)
     if user_index ~= 0 then return end
 
-    -- Flashlight toggle: right grip inside the flashlight zone. The press is hidden from the game (no melee).
-    if gestures.getGesture(gestures.Gesture.PUNCH) then
-        rightGripWasDown = true
-    else
-        local rightGripNow = uevrUtils.isButtonPressed(state, BTN_RIGHT_GRIP)
-        if rightGripNow and flashZoneOverlapping then
-            uevrUtils.unpressButton(state, BTN_RIGHT_GRIP)
-            if not rightGripWasDown then
-                flashlightOn = not flashlightOn
-                print("[FL] Spotlight toggled -> " .. tostring(flashlightOn))
-            end
+    local rightGripNow = uevrUtils.isButtonPressed(state, BTN_RIGHT_GRIP)
+    local leftGripNow  = uevrUtils.isButtonPressed(state, BTN_LEFT_GRIP)
+    if isHeadLight() then
+        -- Head-mounted toggle: a left grip press starting in the head zone (not while two-handing). That press
+        -- is hidden from the game, and from the two-hand grab below, until it is released.
+        if leftGripNow and not leftGripWasDown and headZoneOverlapping and not active then
+            headGripHeld = true
+            flashlightOn = not flashlightOn
+            print("[FL] Head light toggled -> " .. tostring(flashlightOn))
         end
+        if not leftGripNow then headGripHeld = false end
+        if headGripHeld then uevrUtils.unpressButton(state, BTN_LEFT_GRIP) end
         rightGripWasDown = rightGripNow
+    else
+        headGripHeld = false
+        -- Flashlight toggle: right grip inside the flashlight zone. The press is hidden from the game (no melee).
+        if gestures.getGesture(gestures.Gesture.PUNCH) then
+            rightGripWasDown = true
+        else
+            if rightGripNow and flashZoneOverlapping then
+                uevrUtils.unpressButton(state, BTN_RIGHT_GRIP)
+                if not rightGripWasDown then
+                    flashlightOn = not flashlightOn
+                    print("[FL] Spotlight toggled -> " .. tostring(flashlightOn))
+                end
+            end
+            rightGripWasDown = rightGripNow
+        end
     end
+    leftGripWasDown = leftGripNow
 
     -- Two-handing grab button (raw, before it is hidden)
     local useTrigger = configui.getValue("th_grab_button") == 2

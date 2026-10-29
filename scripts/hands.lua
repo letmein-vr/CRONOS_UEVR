@@ -271,6 +271,14 @@ local spotLightSearchTime  = 0
 local SPOTLIGHT_CLASS_NAME = "Class /Script/Engine.SpotLightComponent"
 local inCutscene           = false  -- shared across both tick callbacks
 
+-- Flashlight mode (combo in the "Flashlight Spotlight" section, two_handed_integration.lua):
+-- 1 = on the left arm (mesh on the arm, spotlight on the left controller, slOff*/slRot* per weapon),
+-- 2 = head-mounted (mesh hidden, spotlight on the HMD with hlOff*/hlRot*; the left-grip-at-the-head toggle is
+-- in two_handed_integration.lua)
+local function isHeadLight()
+    return configui.getValue("flashlight_mode") == 2
+end
+
 local function findFlashlightSpot()
     local spotClass = uevr.api:find_uobject(SPOTLIGHT_CLASS_NAME)
     if spotClass == nil then
@@ -385,21 +393,23 @@ uevr.sdk.callbacks.on_pre_engine_tick(function(engine, delta)
     end
 
     if cachedSpotLight ~= nil and not inCutscene then
-        -- Pin the spotlight to the left controller (hand 0) every tick
-        -- and apply per-weapon location/rotation offsets from the Cronos VR config panel.
+        -- Pin the spotlight to the left controller (hand 0, per-weapon sl* offsets) or, head-mounted, to the
+        -- HMD (hand 2, hl* offsets) every tick, from the Cronos VR config panel.
         local ok, err = pcall(function()
+            local head = isHeadLight()
+            local p = head and "hl" or "sl"
             local state = UEVR_UObjectHook.get_or_add_motion_controller_state(cachedSpotLight)
-            state:set_hand(0)       -- 0 = left hand
+            state:set_hand(head and 2 or 0)  -- 0 = left hand, 2 = HMD
             state:set_permanent(true)
             state:set_location_offset(Vector3f.new(
-                configui.getValue("slOffX") or 0,
-                configui.getValue("slOffY") or 0,
-                configui.getValue("slOffZ") or 0
+                configui.getValue(p .. "OffX") or 0,
+                configui.getValue(p .. "OffY") or 0,
+                configui.getValue(p .. "OffZ") or 0
             ))
             state:set_rotation_offset(Vector3f.new(
-                math.rad(configui.getValue("slRotPitch") or 0),
-                math.rad(configui.getValue("slRotYaw")   or 0),
-                math.rad(configui.getValue("slRotRoll")  or 0)
+                math.rad(configui.getValue(p .. "RotPitch") or 0),
+                math.rad(configui.getValue(p .. "RotYaw")   or 0),
+                math.rad(configui.getValue(p .. "RotRoll")  or 0)
             ))
         end)
         if not ok then
@@ -878,13 +888,18 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
                     end
                 end
 
-                -- 3. Force Flashlight_Mesh visible
+                -- 3. Force Flashlight_Mesh visible (head-mounted mode: hidden, not propagated - the spotlight
+                --    and shaft visibility belong to the on/off toggle in two_handed_integration.lua)
                 local flm = uevrUtils.getValid(pawn.Flashlight_Mesh)
                 if flm ~= nil then
-                    if flm.bHiddenInGame then
-                        flm:SetHiddenInGame(false, true)
+                    if isHeadLight() then
+                        flm:SetVisibility(false, false)
+                    else
+                        if flm.bHiddenInGame then
+                            flm:SetHiddenInGame(false, true)
+                        end
+                        flm:SetVisibility(true, true)
                     end
-                    flm:SetVisibility(true, true)
                 end
 
                 -- 4. Force FlamethrowerSM and HarvesterSK visible
@@ -936,8 +951,9 @@ attachments.registerOnGripUpdateCallback(function()
     local gunRoot    = getGunRoot(pawn)    -- right hand
     local flashlight = getFlashlight(pawn) -- left  hand
     -- IK modes: the flashlight goes on the IK forearm instead (ensureFlashlightOnIKForearm); nil makes the
-    -- library release it, and flashlightOptions leave it where it is
-    if isIKMode() then flashlight = nil end
+    -- library release it, and flashlightOptions leave it where it is. Head-mounted flashlight: the mesh is
+    -- hidden, so the left hand is released too (no flashlight grip pose)
+    if isIKMode() or isHeadLight() then flashlight = nil end
     -- Right: the gun on the pawn-owned proxy (getGunProxy: on the right controller in Hands mode, on the IK
     -- arm mesh in IK modes), like Atomic Heart attaches to its hand meshes. Not the raw controller: its
     -- UObjectHook state re-placed the gun on the controller at render time, ahead of the IK arm.
