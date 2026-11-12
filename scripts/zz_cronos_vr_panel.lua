@@ -35,6 +35,7 @@ local FLAT_SECTIONS = {
     ["Hands"]                = true,
     ["Two-Handed Aiming"]    = true,
     ["Weapon Recoil"]        = true,
+    ["Immersive HUD"]        = true,
     ["Flashlight Spotlight"] = true,
     ["Weapon Reticule"]      = true,
 }

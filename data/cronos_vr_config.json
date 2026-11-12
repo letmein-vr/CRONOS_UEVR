@@ -1,4 +1,5 @@
 {
+    "cr_immersive_hud": false,
     "cr_recoil_ease": 0.15,
     "cr_recoil_enabled": true,
     "cr_recoil_max_cm": 8.0,

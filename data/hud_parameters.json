@@ -1,0 +1,118 @@
+{
+    "elements": {
+        "element_1": {
+            "appearance": {
+                "blendMode": 2,
+                "brightness": 6.300000190734863,
+                "exposure": false,
+                "exposureStrength": 1.2699999809265137,
+                "opacity": 0.8080000281333923,
+                "sortPriority": 1,
+                "twoSided": true
+            },
+            "id": "element_1",
+            "label": "Health",
+            "mode": "region",
+            "regionPadding": 8,
+            "resolutionScale": 2,
+            "target": {
+                "socket": "hand_l",
+                "type": "left_hand"
+            },
+            "transform": {
+                "position": [
+                    -4.199999809265137,
+                    7.599999904632568,
+                    -10.300000190734863
+                ],
+                "rotation": [
+                    -2.0,
+                    152.5,
+                    -174.0
+                ],
+                "widthCm": 10.5
+            },
+            "widget": {
+                "child": "HPWidget/HealthOverlay",
+                "class": "WidgetBlueprintGeneratedClass /Game/Game/UI/GameplayHUD/HUDinfo/PlayerHudWidget_BP.PlayerHudWidget_BP_C"
+            }
+        },
+        "element_2": {
+            "appearance": {
+                "blendMode": 2,
+                "brightness": 4.25,
+                "exposure": false,
+                "opacity": 0.164000004529953,
+                "twoSided": true
+            },
+            "id": "element_2",
+            "label": "Ammo",
+            "mode": "region",
+            "regionPadding": 8,
+            "resolutionScale": 2.200000047683716,
+            "target": {
+                "socket": "hand_r",
+                "type": "right_hand"
+            },
+            "transform": {
+                "position": [
+                    0.699999988079071,
+                    2.4000000953674316,
+                    12.899999618530273
+                ],
+                "rotation": [
+                    0.0,
+                    1.0,
+                    -2.5
+                ],
+                "widthCm": 3.5999999046325684
+            },
+            "widget": {
+                "child": "AmmoWidget/AmmoBox",
+                "class": "WidgetBlueprintGeneratedClass /Game/Game/UI/GameplayHUD/HUDinfo/PlayerHudWidget_BP.PlayerHudWidget_BP_C"
+            }
+        },
+        "element_3": {
+            "appearance": {
+                "blendMode": 1,
+                "brightness": 1.25,
+                "exposure": false,
+                "opacity": 1.0,
+                "twoSided": true
+            },
+            "id": "element_3",
+            "label": "HUD",
+            "mode": "region",
+            "regionPadding": 8,
+            "regionRest": true,
+            "resolutionScale": 2,
+            "target": {
+                "type": "hmd"
+            },
+            "transform": {
+                "position": [
+                    35.400001525878906,
+                    6.300000190734863,
+                    -3.9000000953674316
+                ],
+                "rotation": [
+                    0,
+                    180,
+                    0
+                ],
+                "widthCm": 40.70000076293945
+            },
+            "widget": {
+                "class": "WidgetBlueprintGeneratedClass /Game/Game/UI/GameplayHUD/HUDinfo/PlayerHudWidget_BP.PlayerHudWidget_BP_C"
+            }
+        }
+    },
+    "exposureSource": "postprocess",
+    "exposureStops": 1.5,
+    "order": [
+        "element_1",
+        "element_2",
+        "element_3"
+    ],
+    "redrawRate": 0
+}
