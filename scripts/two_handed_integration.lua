@@ -16,6 +16,10 @@
 --   * the grab button is hidden from the game while two-handing or near the grip point (left grip = mines).
 -- Releasing the button, or moving the left controller beyond the release radius, glides the hand back.
 --
+-- Weapons are keyed by the full mesh asset name (HandGun_01, HandGun_02, ShotGun_01, ...; the MultiModeGun is one
+-- actor that swaps its mesh per mode). The game's own left grip (hand_l on the LH socket while the game aims) is
+-- measured once per mesh and then used for the left hand in Hands and IK modes (see "The game's own left grip").
+--
 -- Flashlight toggle: put the right controller inside the flashlight zone (a sphere at the left hand plus the
 -- fl offsets, radius flDetectRadius) and press right grip. The grip is hidden from the game (no melee).
 -- Head-mounted flashlight mode (flashlight_mode 2: spotlight on the HMD, mesh hidden, see hands.lua): press
@@ -58,14 +62,35 @@ local function saveProfiles()
 end
 loadProfiles()
 
+-- The MultiModeGun is ONE actor and mesh component for every weapon mode; it only swaps the mesh asset. Profiles are
+-- keyed by the full asset name minus "SK_" (HandGun_01, HandGun_02, MachineGun_01, MachineGun_02, ShotGun_01,
+-- Arbalest): the grip geometry (sockets, hand offsets) belongs to the mesh. The old key also stripped the _NN suffix,
+-- so the _01 / _02 pairs shared one profile. NOT the mode container: on a mode switch the container changes at once
+-- but the mesh swaps a moment later (live 2026-11-12: every new mode was seeded from the previous weapon's profile).
+-- The mode's short name ("SpreadGun", "HeavyRifle", ...) is only shown in the label.
+local function getWeaponModeName(wpc)
+    local ok, name = pcall(function()
+        local container = wpc:GetWeaponModeContainer()
+        if container == nil then return nil end
+        local n = container:get_class():get_fname():to_string()
+        n = string.gsub(n, "_C$", "")
+        n = string.gsub(n, "_BP$", "")
+        n = string.gsub(n, "Container$", "")
+        return n ~= "" and n or nil
+    end)
+    if ok then return name end
+    return nil
+end
+
+-- returns root, mesh, weaponKey (SK_ShotGun_01 -> "ShotGun_01"), oldKey ("ShotGun"), modeName ("SpreadGun")
 local function getEquippedWeaponForCronos(pawn)
-    if not pawn then return nil, nil, nil end
-    local ok, result1, result2, result3 = pcall(function()
+    if not pawn then return nil, nil, nil, nil, nil end
+    local ok, result1, result2, result3, result4, result5 = pcall(function()
         local wpc = uevrUtils.getValid(pawn.WeaponPlayerComponent)
-        if wpc == nil then return nil, nil, nil end
+        if wpc == nil then return nil, nil, nil, nil, nil end
 
         local gun = uevrUtils.getValid(wpc.MultiModeGun)
-        if gun == nil then return nil, nil, nil end
+        if gun == nil then return nil, nil, nil, nil, nil end
 
         -- The engine leaves the weapon hidden after mantling. Force it visible!
         if gun.bHidden then
@@ -94,20 +119,37 @@ local function getEquippedWeaponForCronos(pawn)
             end
         end
 
-        local skelName = "Unknown"
+        local key, oldKey = "Unknown", "Unknown"
         if mesh then
             local skelMesh = mesh.SkeletalMesh  -- the actual asset inside the component
             if skelMesh then
-                -- fname is like "SK_ShotGun_01": strip the trailing _NN suffix and the SK_ prefix
+                -- fname is like "SK_ShotGun_01"
                 local fname = skelMesh:get_fname():to_string()
-                skelName = string.gsub(fname, "_%d+$", "")
-                skelName = string.gsub(skelName, "^SK_", "")
+                key = string.gsub(fname, "^SK_", "")
+                oldKey = string.gsub(key, "_%d+$", "")
             end
         end
-        return root, mesh, skelName
+        return root, mesh, key, oldKey, getWeaponModeName(wpc)
     end)
-    if ok then return result1, result2, result3 end
-    return nil, nil, nil
+    if ok then return result1, result2, result3, result4, result5 end
+    return nil, nil, nil, nil, nil
+end
+
+-- Profiles used to be keyed by the mesh name without its _NN suffix. The first time a mesh is seen, it starts from
+-- that old profile (a copy: HandGun_01 and HandGun_02 each get their own from then on).
+local function deepCopy(v)
+    if type(v) ~= "table" then return v end
+    local t = {}
+    for k, x in pairs(v) do t[k] = deepCopy(x) end
+    return t
+end
+
+local function migrateProfile(weaponKey, meshName)
+    if weaponKey == nil or meshName == nil or weaponKey == meshName then return end
+    if weaponProfiles[weaponKey] ~= nil or weaponProfiles[meshName] == nil then return end
+    weaponProfiles[weaponKey] = deepCopy(weaponProfiles[meshName])
+    saveProfiles()
+    print("[two_handed] profile " .. weaponKey .. " seeded from the old profile " .. meshName)
 end
 
 local isAlive = function(obj)
@@ -241,9 +283,10 @@ local LH_GRIP_POSE_SHOTGUN = {
     index_03_l  = { rotation = { 0.0,      -12.5164,  0.0     } },
 }
 
--- fallback poses keyed by skelName (same as currentWeapon)
+-- fallback poses keyed by the weapon key (same as currentWeapon)
 local LH_WEAPON_POSES = {
     ShotGun = LH_GRIP_POSE_SHOTGUN,
+    ShotGun_01 = LH_GRIP_POSE_SHOTGUN,
 }
 
 -- ==========================================
@@ -335,6 +378,11 @@ table.insert(_G.CRONOS_SECTIONS, { order = 2, label = "Two-Handed Aiming", layou
             { widgetType = "spacing" },
             { widgetType = "text", id = "weapon_label", label = "Current Weapon: None" },
             { widgetType = "text", id = "th_status_label", label = "Status: idle" },
+            { widgetType = "spacing" },
+            { widgetType = "checkbox", id = "th_game_left_grip", label = "Left hand takes the game's own grip (measured per weapon while aiming)", initialValue = true },
+            { widgetType = "text", id = "th_game_left_label", label = "Game left grip: -" },
+            { widgetType = "button", id = "th_game_left_remeasure", label = "Re-measure this weapon's left grip", size = {260, 24} },
+            { widgetType = "spacing" },
             { widgetType = "checkbox", id = "th_show_markers", label = "Show debug spheres (grip point, flashlight zone)", initialValue = false },
             { widgetType = "checkbox", id = "forceTwoHand", label = "Force 2-Handing ON (dev)", initialValue = false },
             { widgetType = "spacing" },
@@ -525,8 +573,321 @@ local function distance(a, b)
     return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
--- World-space grip point: the weapon's LH socket plus the per-weapon grip offset in the socket's space
+-- ==========================================
+-- The game's own left grip (OW2 / Borderlands 4 port, 2026-11-12)
+-- ==========================================
+-- While the game aims (SHCharacterStatics.IsInRangedAim), its left-hand IK puts the body's hand_l on the gun's
+-- left-hand socket, even with the gun on the VR controller (MCP, SpreadGun: 2 cm from SprdG_LeftHandHandle, with a
+-- fixed rotation offset). So hand_l in that socket's space is how the game holds the weapon. It is measured once per
+-- weapon mesh while aiming and steady, saved as profile.gameLeft = { socket, loc, rot, v }, and with th_game_left_grip
+-- (and "Snap left hand to grip") the left hand's hand_l goes exactly there in Hands and IK modes; the grab point is
+-- that spot and the lhPmc / ikLh sliders are not applied on top. A mode whose game left hand stays well off the socket
+-- while aiming is saved as { none = true }: the LH socket + sliders as before.
+-- A blank LH socket is filled from the mesh (<prefix>_LeftHandHandle, else <prefix>_handLeft_socket) once measured.
+-- CharacterMesh0 is hidden in VR and only ticks its pose (VisibilityBasedAnimTickOption 1), so its bones are stale
+-- (MCP: hand_l identical across samples). While measuring or capturing the finger pose the option is set to 0
+-- (refresh bones) and put back afterwards.
+local GAME_LEFT_BONE = "hand_l"        -- also the IK left solver's end bone (data/ik_parameters.json)
+local GAME_LEFT_VERSION = 1
+local RTS_COMPONENT, RTS_WORLD = 2, 0
+local LEFT_REFRESH_S = 0.25            -- after forcing the body to refresh its bones
+local LEFT_STABLE_S = 0.75
+local LEFT_STABLE_CM, LEFT_STABLE_DEG = 1.0, 3.0
+local LEFT_ON_SOCKET_CM = 5.0          -- the game's IK reached the socket
+local LEFT_OFF_GUN_CM = 25.0           -- steadily this far while aiming: the game holds this mode one-handed
+
+local fnames = {}
+local function fname(s)
+    if fnames[s] == nil then fnames[s] = uevrUtils.fname_from_string(s) end
+    return fnames[s]
+end
+
+local function logInfo(msg)
+    print("[two_handed] " .. msg)
+    pcall(function() uevr.params.functions.log_info("[two_handed] " .. msg) end)
+end
+
+local function gameLeftEnabled() return configui.getValue("th_game_left_grip") ~= false end
+
+-- the current weapon's measured grip as a transform in its LH socket's space, or nil
+local function gameLeftGripT()
+    if not gameLeftEnabled() or not snapLeft() or currentWeapon == "None" then return nil end
+    local p = weaponProfiles[currentWeapon]
+    local g = p and p.gameLeft or nil
+    if g == nil or g.v ~= GAME_LEFT_VERSION or g.none or g.loc == nil or g.socket ~= getLHSocket() then return nil end
+    return kismet_math_library:MakeTransform(uevrUtils.vector(g.loc.X, g.loc.Y, g.loc.Z),
+        uevrUtils.rotator(g.rot.Pitch, g.rot.Yaw, g.rot.Roll), uevrUtils.vector(1, 1, 1))
+end
+
+local function updateGameLeftLabel(text)
+    if text == nil then
+        local p = currentWeapon ~= "None" and weaponProfiles[currentWeapon] or nil
+        local g = p and p.gameLeft or nil
+        if not gameLeftEnabled() then text = "off"
+        elseif currentWeapon == "None" then text = "-"
+        elseif g == nil or g.v ~= GAME_LEFT_VERSION then text = "not measured yet (aim with this weapon and hold still)"
+        elseif g.none then text = "the game holds " .. currentWeapon .. " one-handed (LH socket + sliders used)"
+        elseif g.socket ~= getLHSocket() then text = "measured on " .. tostring(g.socket) .. ", not the current LH socket (re-measure)"
+        else text = string.format("%s on %s (%.1f %.1f %.1f) / (%.1f %.1f %.1f)", currentWeapon, g.socket,
+            g.loc.X, g.loc.Y, g.loc.Z, g.rot.Pitch, g.rot.Yaw, g.rot.Roll) end
+    end
+    configui.setLabel("th_game_left_label", "Game left grip: " .. text)
+end
+
+-- Body bone refresh, shared by the probe and the finger pose capture
+local bodyBones = { mesh = nil, original = nil, since = 0, holders = {} }
+
+local function releaseBodyBones(who)
+    bodyBones.holders[who] = nil
+    if next(bodyBones.holders) ~= nil or bodyBones.mesh == nil then return end
+    local mesh, original = bodyBones.mesh, bodyBones.original
+    bodyBones.mesh, bodyBones.original = nil, nil
+    if isAlive(mesh) and original ~= nil then
+        pcall(function() mesh.VisibilityBasedAnimTickOption = original end)
+    end
+end
+
+-- returns the time the body started refreshing its bones
+local function holdBodyBones(mesh, who)
+    if bodyBones.mesh ~= nil and bodyBones.mesh ~= mesh then
+        bodyBones.holders = {}
+        releaseBodyBones(who)
+    end
+    if bodyBones.mesh == nil then
+        local ok = pcall(function()
+            bodyBones.original = mesh.VisibilityBasedAnimTickOption
+            mesh.VisibilityBasedAnimTickOption = 0 -- AlwaysTickPoseAndRefreshBones
+        end)
+        if not ok then return nil end
+        bodyBones.mesh, bodyBones.since = mesh, os.clock()
+    end
+    bodyBones.holders[who] = true
+    return bodyBones.since
+end
+
+local function forgetBodyBones()
+    bodyBones.holders = {}
+    releaseBodyBones("all")
+end
+
+-- shared with weapon_recoil.lua (reads the body's gun socket while aiming)
+_G.cronosHoldBodyBones = holdBodyBones
+_G.cronosReleaseBodyBones = releaseBodyBones
+
+local characterStatics = nil
+local function isRangedAiming(pawn)
+    if characterStatics == nil then
+        local cls = api:find_uobject("Class /Script/Cronos.SHCharacterStatics")
+        if cls == nil then return false end
+        characterStatics = cls:get_class_default_object()
+        if characterStatics == nil then return false end
+    end
+    local ok, aiming = pcall(function() return characterStatics:IsInRangedAim(pawn) end)
+    return ok and aiming == true
+end
+_G.cronosIsRangedAiming = isRangedAiming
+
+-- weapon_recoil.lua's kick for the gun proxy (proxy-local transform), or nil
+local function recoilDelta()
+    if _G.cronosRecoilDelta == nil then return nil end
+    local ok, d = pcall(_G.cronosRecoilDelta)
+    if ok then return d end
+    return nil
+end
+
+-- the mesh's left-hand socket: <prefix>_LeftHandHandle (the game's IK target on the SpreadGun), else
+-- <prefix>_handLeft_socket (the bone the Arbalest / SmartGun profiles use); the prefix comes from <prefix>_muzzle
+local leftSocketCache = {}
+local function findLeftSocket(weaponMesh)
+    local asset = nil
+    pcall(function() asset = weaponMesh.SkeletalMesh:get_full_name() end)
+    if asset ~= nil and leftSocketCache[asset] ~= nil then return leftSocketCache[asset] or nil end
+    local found = false
+    pcall(function()
+        local prefixes = {}
+        local ok, names = pcall(function() return weaponMesh:GetAllSocketNames() end)
+        if ok and names ~= nil then
+            for _, name in ipairs(names) do
+                local s = type(name) == "string" and name or name:to_string()
+                local p = s:match("^(.-)_[Mm]uzzle$")
+                if p ~= nil then table.insert(prefixes, p) end
+            end
+        end
+        for _, p in ipairs({ "GG", "SprdG", "SmrtG", "AnnG" }) do table.insert(prefixes, p) end
+        for _, p in ipairs(prefixes) do
+            for _, suffix in ipairs({ "_LeftHandHandle", "_handLeft_socket" }) do
+                if found == false and weaponMesh:DoesSocketExist(fname(p .. suffix)) then found = p .. suffix end
+            end
+        end
+    end)
+    if asset ~= nil then leftSocketCache[asset] = found end
+    return found or nil
+end
+
+-- hand_l of the body in the socket's space
+local function measureGameLeft(body, weaponMesh, socket)
+    local grip = nil
+    pcall(function()
+        local hand = body:GetSocketTransform(fname(GAME_LEFT_BONE), RTS_WORLD)
+        local rel = kismet_math_library:MakeRelativeTransform(hand, socketTransform(weaponMesh, socket))
+        local t, r = rel.Translation, kismet_math_library:Quat_Rotator(rel.Rotation)
+        grip = { loc = { X = t.X, Y = t.Y, Z = t.Z }, rot = { Pitch = r.Pitch, Yaw = r.Yaw, Roll = r.Roll },
+                 dist = math.sqrt(t.X * t.X + t.Y * t.Y + t.Z * t.Z) }
+    end)
+    return grip
+end
+
+local function angleDelta(a, b) return math.abs((a - b + 180) % 360 - 180) end
+local function gripsClose(a, b)
+    local dx, dy, dz = a.loc.X - b.loc.X, a.loc.Y - b.loc.Y, a.loc.Z - b.loc.Z
+    return math.sqrt(dx * dx + dy * dy + dz * dz) <= LEFT_STABLE_CM
+        and angleDelta(a.rot.Pitch, b.rot.Pitch) <= LEFT_STABLE_DEG and angleDelta(a.rot.Yaw, b.rot.Yaw) <= LEFT_STABLE_DEG
+        and angleDelta(a.rot.Roll, b.rot.Roll) <= LEFT_STABLE_DEG
+end
+
+local autoCaptureLeftPose = nil -- set below (captureLeftPose)
+local leftProbe = { id = nil, last = nil, stableSince = nil }
+local function resetLeftProbe() leftProbe = { id = nil, last = nil, stableSince = nil } end
+
+-- every tick while a weapon is held: measures the current mode once, while the game aims and the grip holds steady
+local function probeGameLeft(pawn, weaponMesh)
+    local p = currentWeapon ~= "None" and weaponProfiles[currentWeapon] or nil
+    local measured = p ~= nil and p.gameLeft ~= nil and p.gameLeft.v == GAME_LEFT_VERSION
+    local body = nil
+    if gameLeftEnabled() and currentWeapon ~= "None" and not measured and isRangedAiming(pawn) then
+        body = uevrUtils.getValid(pawn.Mesh)
+    end
+    local socket = nil
+    if body ~= nil then
+        socket = getLHSocket()
+        local exists = false
+        if socket ~= "" then pcall(function() exists = weaponMesh:DoesSocketExist(fname(socket)) end) end
+        if not exists then
+            -- blank, or a socket this mesh doesn't have (GetSocketLocation would return the mesh origin)
+            if socket ~= "" then print("[two_handed] LH socket " .. socket .. " is not on " .. currentWeapon .. ", searching the mesh") end
+            socket = findLeftSocket(weaponMesh)
+        end
+    end
+    if body == nil or socket == nil then
+        if body ~= nil then updateGameLeftLabel("no left-hand socket on " .. currentWeapon .. " (one-handed)") end
+        resetLeftProbe()
+        releaseBodyBones("probe")
+        return
+    end
+    if leftProbe.id ~= currentWeapon then leftProbe = { id = currentWeapon, last = nil, stableSince = nil } end
+    local since = holdBodyBones(body, "probe")
+    if since == nil or os.clock() - since < LEFT_REFRESH_S then return end
+
+    local grip = measureGameLeft(body, weaponMesh, socket)
+    if grip == nil then leftProbe.last, leftProbe.stableSince = nil, nil return end
+    local now = os.clock()
+    if leftProbe.last ~= nil and gripsClose(grip, leftProbe.last) then
+        leftProbe.stableSince = leftProbe.stableSince or now
+    else
+        leftProbe.stableSince = nil
+    end
+    leftProbe.last = grip
+    if leftProbe.stableSince == nil or now - leftProbe.stableSince < LEFT_STABLE_S then
+        updateGameLeftLabel(string.format("measuring %s - hold still (%.0f cm from %s)", currentWeapon, grip.dist, socket))
+        return
+    end
+
+    if p == nil then p = {} weaponProfiles[currentWeapon] = p end
+    if grip.dist <= LEFT_ON_SOCKET_CM then
+        p.gameLeft = { socket = socket, loc = grip.loc, rot = grip.rot, v = GAME_LEFT_VERSION }
+        logInfo(string.format("game LEFT grip %s on %s: (%.1f %.1f %.1f) / (%.1f %.1f %.1f)", currentWeapon, socket,
+            grip.loc.X, grip.loc.Y, grip.loc.Z, grip.rot.Pitch, grip.rot.Yaw, grip.rot.Roll))
+        if getLHSocket() ~= socket then
+            p.lhSocket = socket
+            configui.setValue("lhSocket", socket, true)
+        end
+        saveProfiles()
+        if p.leftPose == nil and autoCaptureLeftPose ~= nil then autoCaptureLeftPose() end
+    elseif grip.dist >= LEFT_OFF_GUN_CM then
+        p.gameLeft = { none = true, v = GAME_LEFT_VERSION }
+        logInfo(string.format("game LEFT grip %s: the game's left hand stays %.0f cm off %s while aiming - one-handed",
+            currentWeapon, grip.dist, socket))
+        saveProfiles()
+    else
+        -- the arm is stretched short of the socket (gun held out of the body's reach): keep waiting
+        leftProbe.stableSince = nil
+        updateGameLeftLabel(string.format("measuring %s - bring the gun closer to your body (%.0f cm from %s)",
+            currentWeapon, grip.dist, socket))
+        return
+    end
+    resetLeftProbe()
+    releaseBodyBones("probe")
+    updateGameLeftLabel()
+end
+
+configui.onUpdate("th_game_left_remeasure", function(value)
+    uevrUtils.setTimeout(1, function() -- draw thread -> game thread
+        local p = currentWeapon ~= "None" and weaponProfiles[currentWeapon] or nil
+        if p == nil then updateGameLeftLabel("no weapon") return end
+        p.gameLeft = nil
+        saveProfiles()
+        resetLeftProbe()
+        updateGameLeftLabel("re-measuring - aim with this weapon and hold still")
+    end)
+end)
+configui.onUpdate("th_game_left_grip", function(value) uevrUtils.setTimeout(1, function() updateGameLeftLabel() end) end)
+
+-- Hands mode: the glove's relative transform on the LH socket that puts ITS hand_l on the game's grip
+-- (relative = bone^-1 * grip; the bone read in the glove's component space)
+local function gameLeftHandsTarget(pmc)
+    local gripT = gameLeftGripT()
+    if gripT == nil or not isAlive(pmc) then return nil end
+    local loc, rot = nil, nil
+    pcall(function()
+        if not pmc:DoesSocketExist(fname(GAME_LEFT_BONE)) then return end
+        local bone = pmc:GetSocketTransform(fname(GAME_LEFT_BONE), RTS_COMPONENT)
+        local rel = kismet_math_library:ComposeTransforms(kismet_math_library:InvertTransform(bone), gripT)
+        local t, r = rel.Translation, kismet_math_library:Quat_Rotator(rel.Rotation)
+        loc, rot = { X = t.X, Y = t.Y, Z = t.Z }, { Pitch = r.Pitch, Yaw = r.Yaw, Roll = r.Roll }
+    end)
+    return loc, rot
+end
+
+-- IK modes: libs/ik.lua puts the end bone (hand_l) at target * (end_bone_offset, end_bone_rotation), so the target in
+-- the socket's space is offset^-1 * grip
+local leftSolverOffT = nil
+local function leftSolverOffsetT()
+    if leftSolverOffT ~= nil then return leftSolverOffT end
+    pcall(function()
+        local cfg = json.load_file("ik_parameters.json")
+        local profileName = cfg and cfg["_profileState"] and cfg["_profileState"]["currentEditingProfile"] or "default"
+        local profile = cfg and (cfg[profileName] or cfg["default"])
+        for _, solver in pairs(profile and profile["solvers"] or {}) do
+            if solver["end_control_type"] == 0 and solver["end_bone"] == GAME_LEFT_BONE then
+                local o, r = solver["end_bone_offset"] or { 0, 0, 0 }, solver["end_bone_rotation"] or { 0, 0, 0 }
+                leftSolverOffT = kismet_math_library:MakeTransform(uevrUtils.vector(o[1], o[2], o[3]),
+                    uevrUtils.rotator(r[1], r[2], r[3]), uevrUtils.vector(1, 1, 1))
+            end
+        end
+    end)
+    return leftSolverOffT
+end
+
+local function gameLeftIKTarget()
+    local gripT = gameLeftGripT()
+    local offT = gripT ~= nil and leftSolverOffsetT() or nil
+    if offT == nil then return nil end
+    local loc, rot = nil, nil
+    pcall(function()
+        local rel = kismet_math_library:ComposeTransforms(kismet_math_library:InvertTransform(offT), gripT)
+        local t, r = rel.Translation, kismet_math_library:Quat_Rotator(rel.Rotation)
+        loc, rot = { X = t.X, Y = t.Y, Z = t.Z }, { Pitch = r.Pitch, Yaw = r.Yaw, Roll = r.Roll }
+    end)
+    return loc, rot
+end
+
+-- World-space grip point: the weapon's LH socket plus the per-weapon grip offset in the socket's space,
+-- or the game's left grip when measured
 local function getGripPoint(weaponMesh)
+    local gameT = gameLeftGripT()
+    if gameT ~= nil then
+        return kismet_math_library:TransformLocation(socketTransform(weaponMesh, getLHSocket()), gameT.Translation)
+    end
     local xf = socketTransform(weaponMesh, getLHSocket())
     return kismet_math_library:TransformLocation(xf, uevrUtils.vector(
         configui.getValue("gripOffX") or 0, configui.getValue("gripOffY") or 0, configui.getValue("gripOffZ") or 0))
@@ -633,13 +994,30 @@ local function lhPmcTarget()
            { Pitch = configui.getValue("lhPmcRotPitch") or 0, Yaw = configui.getValue("lhPmcRotYaw") or 0, Roll = configui.getValue("lhPmcRotRoll") or 0 }
 end
 
+local gameLeftActive = false -- two-handing with the left hand on the game's measured grip
+
 local function attachLeftGloveToGun(pmc, weaponMesh)
     -- KeepWorld (1): the hand stays where the controller put it, now in the socket's space (glide start)
     pmc:K2_AttachTo(weaponMesh, uevrUtils.fname_from_string(getLHSocket()), 1, false)
     local sLoc, sRot = relativeOf(pmc)
     local eLoc, eRot = sLoc, sRot
-    if snapLeft() then eLoc, eRot = lhPmcTarget() end
+    local gLoc, gRot = gameLeftHandsTarget(pmc)
+    gameLeftActive = gLoc ~= nil
+    if gameLeftActive then
+        eLoc, eRot = gLoc, gRot
+    elseif snapLeft() then
+        eLoc, eRot = lhPmcTarget()
+    end
     startLeftGlide(pmc, sLoc, sRot, eLoc, eRot)
+end
+
+-- Hands mode, game grip: keep the glove's hand_l on the grip once the glide is done (the grip pose moves the hand
+-- bones; the target is re-solved from the glove's current hand_l every tick)
+local function holdGameLeftGlove()
+    if not active or activeInIKMode or not gameLeftActive or leftGlide ~= nil then return end
+    local pmc = hands.getHandComponent(Handed.Left)
+    local loc, rot = gameLeftHandsTarget(pmc)
+    if loc ~= nil then pcall(setRelative, pmc, loc, rot) end
 end
 
 local function releaseLeftGlove(pmc)
@@ -666,7 +1044,7 @@ end
 
 -- live lhPmc slider changes while gripping
 local function refreshLeftGlove()
-    if not active or activeInIKMode or not snapLeft() then return end
+    if not active or activeInIKMode or not snapLeft() or gameLeftActive then return end
     local pmc = hands.getHandComponent(Handed.Left)
     if not isAlive(pmc) then return end
     leftGlide = nil
@@ -711,6 +1089,18 @@ end
 local function syncIKRightOffset()
     if not isIKMode() or active then return end
     local loc, rot = ikRightOffset()
+    -- weapon recoil: the gun proxy is kicked by D (controller frame here: the proxy stands on the controller), so the
+    -- hand target = offset * D * controller
+    local d = recoilDelta()
+    if d ~= nil then
+        pcall(function()
+            local o = kismet_math_library:MakeTransform(uevrUtils.vector(loc.X, loc.Y, loc.Z),
+                uevrUtils.rotator(rot.Pitch, rot.Yaw, rot.Roll), uevrUtils.vector(1, 1, 1))
+            local c = kismet_math_library:ComposeTransforms(o, d)
+            local t, r = c.Translation, kismet_math_library:Quat_Rotator(c.Rotation)
+            loc, rot = { X = t.X, Y = t.Y, Z = t.Z }, { Pitch = r.Pitch, Yaw = r.Yaw, Roll = r.Roll }
+        end)
+    end
     local zero = loc.X == 0 and loc.Y == 0 and loc.Z == 0 and rot.Pitch == 0 and rot.Yaw == 0 and rot.Roll == 0
     local controller = controllers.getController(1)
     if zero or controller == nil then
@@ -746,6 +1136,15 @@ local function attachIKLeftToGun(weaponMesh)
     local socket = getLHSocket()
     -- the left controller in the socket's space: as a virtual controller this puts the hand exactly where it is
     local sLoc, sRot = toLocal(socketTransform(weaponMesh, socket), controller:K2_GetComponentLocation(), controller:K2_GetComponentRotation())
+
+    -- The game's measured grip: exact, the ikLh sliders don't apply
+    local gLoc, gRot = gameLeftIKTarget()
+    gameLeftActive = gLoc ~= nil
+    if gameLeftActive then
+        ikLeft = { parent = weaponMesh, socket = socket }
+        startIKLeftGlide(sLoc, sRot, gLoc, gRot)
+        return
+    end
 
     -- First grab of this weapon in an IK mode: the grab pose becomes its grip (fine-tune with the sliders)
     local profile = weaponProfiles[currentWeapon]
@@ -803,7 +1202,7 @@ end
 -- live slider changes while gripping in an IK mode
 local function refreshIKLeftTarget()
     local s = ikLeft
-    if s == nil or s.releasing or not snapLeft() then return end
+    if s == nil or s.releasing or not snapLeft() or gameLeftActive then return end
     local eLoc, eRot = ikGripTarget()
     if s.glide ~= nil then
         s.glide.eLoc, s.glide.eRot = eLoc, eRot
@@ -852,8 +1251,9 @@ end
 
 -- Copies the game's body mesh (pawn.Mesh, animated with the weapon's real two-handed grip) into a temporary
 -- poseable mesh and records the bone-space rotation of every bone below hand_l for the current weapon.
-local function captureLeftPose()
-    if currentWeapon == "None" then status("capture: no weapon") return end
+local function captureLeftPoseNow(weapon)
+    releaseBodyBones("capture")
+    if currentWeapon ~= weapon then status("capture: weapon changed") return end
     local pawn = api:get_local_pawn(0)
     local source = pawn ~= nil and uevrUtils.getValid(pawn.Mesh) or nil
     if source == nil then status("capture: body mesh not found") return end
@@ -877,6 +1277,21 @@ local function captureLeftPose()
     status("captured " .. count .. " bones for " .. currentWeapon)
     applyLeftPose()
 end
+
+-- The hidden body only refreshes its bones while held (see holdBodyBones): refresh first, capture a moment later
+local function captureLeftPose()
+    if currentWeapon == "None" then status("capture: no weapon") return end
+    local pawn = api:get_local_pawn(0)
+    local source = pawn ~= nil and uevrUtils.getValid(pawn.Mesh) or nil
+    if source == nil then status("capture: body mesh not found") return end
+    local weapon = currentWeapon
+    if holdBodyBones(source, "capture") == nil then status("capture: body mesh not ready") return end
+    uevrUtils.setTimeout(math.floor(LEFT_REFRESH_S * 1000), function()
+        local ok, err = pcall(captureLeftPoseNow, weapon)
+        if not ok then releaseBodyBones("capture") status("capture failed: " .. tostring(err)) end
+    end)
+end
+autoCaptureLeftPose = captureLeftPose
 
 configui.onUpdate("th_capture_pose", function(value)
     -- button callbacks run on the draw thread; the capture spawns a temp component -> defer
@@ -933,6 +1348,7 @@ end
 local function activate(root, weaponMesh)
     if active then return end
     active = true
+    gameLeftActive = false
     activeInIKMode = isIKMode()
     _G.isTwoHandingActive = true
     captureGunBase(root)
@@ -948,12 +1364,13 @@ local function activate(root, weaponMesh)
         end
     end
     pcall(function() hands.setHoldingAttachment(Handed.Left, true) end)
-    status("two-handing")
+    status(gameLeftActive and "two-handing (game's left grip)" or "two-handing")
 end
 
 local function deactivate(reason)
     if not active then return end
     active = false
+    gameLeftActive = false
     pivotArgs = nil
     pcall(resetGunToBase) -- straighten the gun back onto the controller
     gunBase = nil
@@ -975,6 +1392,7 @@ end
 -- drop all two-handing state without touching objects that may be gone (pawn / level change)
 local function forgetTwoHanding()
     active = false
+    gameLeftActive = false
     pivotArgs = nil
     gunBase = nil
     leftGlide = nil
@@ -1007,7 +1425,10 @@ local function resetLevelState()
     punchAnimationActive  = false
     inGrabZone            = false
     destroyMarkers()
+    forgetBodyBones()
+    resetLeftProbe()
     currentWeapon         = "None"
+    updateGameLeftLabel()
     configui.setLabel("weapon_label", "Current Weapon: None")
     configui.setLabel("sl_weapon_label", "Saved for weapon: None")
     pcall(function() hands.setHoldingAttachment(Handed.Left, false) end)
@@ -1044,11 +1465,14 @@ uevr.sdk.callbacks.on_script_reset(function()
     detachIKLeft()
     detachIKRight()
     destroyMarkers()
+    forgetBodyBones() -- the body's own anim tick option back
 end)
 
 uevrUtils.registerPreLevelChangeCallback(function(level)
     forgetTwoHanding()
     destroyMarkers() -- still alive here; the level takes their owner with it
+    forgetBodyBones()
+    resetLeftProbe()
 end)
 
 -- ==========================================
@@ -1131,8 +1555,15 @@ local function placeProxyAfterSolve()
     local ok, rel = pcall(controllerRelativeToRig)
     if not ok or rel == nil then return end
     pcall(function()
-        proxy:K2_SetRelativeLocationAndRotation(uevrUtils.vector(rel[1].X, rel[1].Y, rel[1].Z),
-            uevrUtils.rotator(rel[2].Pitch, rel[2].Yaw, rel[2].Roll), false, getHitResult(), false)
+        local loc = uevrUtils.vector(rel[1].X, rel[1].Y, rel[1].Z)
+        local rot = uevrUtils.rotator(rel[2].Pitch, rel[2].Yaw, rel[2].Roll)
+        -- weapon recoil: kick the proxy in its own frame (weapon_recoil.lua)
+        local d = recoilDelta()
+        if d ~= nil then
+            local c = kismet_math_library:ComposeTransforms(d, kismet_math_library:MakeTransform(loc, rot, uevrUtils.vector(1, 1, 1)))
+            loc, rot = c.Translation, kismet_math_library:Quat_Rotator(c.Rotation)
+        end
+        proxy:K2_SetRelativeLocationAndRotation(loc, rot, false, getHitResult(), false)
     end)
 end
 
@@ -1150,7 +1581,14 @@ local function placeProxyBeforeSolve()
     local ok = pcall(function()
         proxy:SetAbsolute(true, true, false)
         proxyHeldInWorld = proxy
-        proxy:K2_SetWorldLocationAndRotation(controller:K2_GetComponentLocation(), controller:K2_GetComponentRotation(), false, getHitResult(), false)
+        local loc, rot = controller:K2_GetComponentLocation(), controller:K2_GetComponentRotation()
+        -- weapon recoil: the left hand solves towards the kicked gun (weapon_recoil.lua)
+        local d = recoilDelta()
+        if d ~= nil then
+            local c = kismet_math_library:ComposeTransforms(d, kismet_math_library:MakeTransform(loc, rot, uevrUtils.vector(1, 1, 1)))
+            loc, rot = c.Translation, kismet_math_library:Quat_Rotator(c.Rotation)
+        end
+        proxy:K2_SetWorldLocationAndRotation(loc, rot, false, getHitResult(), false)
     end)
     if ok then pcall(applyPivot) end
 end
@@ -1262,7 +1700,7 @@ local function doStereoBody()
     local rightHand, leftHand = controllers.getController(1), controllers.getController(0)
     if not rightHand or not leftHand then return end
 
-    local root, weaponMesh, skelName = getEquippedWeaponForCronos(pawn)
+    local root, weaponMesh, skelName, oldKey, modeName = getEquippedWeaponForCronos(pawn)
     local gunEquipped = root ~= nil and weaponMesh ~= nil
 
     if gestures.getGesture(gestures.Gesture.PUNCH) and not punchAnimationActive then
@@ -1296,16 +1734,22 @@ local function doStereoBody()
         deactivate("no weapon")
         inGrabZone = false
         setMarker("grip", nil)
+        resetLeftProbe()
+        releaseBodyBones("probe")
         return
     end
 
-    -- Weapon switch: release first, then load the new weapon's profile
+    -- Weapon switch: release first, then load the new weapon's profile (skelName = the mesh asset, e.g. HandGun_02;
+    -- a mesh seen for the first time starts from its old profile without the _NN suffix)
     if skelName ~= nil and skelName ~= currentWeapon then
         deactivate("weapon changed")
+        migrateProfile(skelName, oldKey)
         currentWeapon = skelName
-        configui.setLabel("weapon_label", "Current Weapon: " .. currentWeapon)
+        configui.setLabel("weapon_label", "Current Weapon: " .. currentWeapon .. " (" .. tostring(modeName) .. ")")
         configui.setLabel("sl_weapon_label", "Saved for weapon: " .. currentWeapon)
         applyProfileValues(currentWeapon)
+        resetLeftProbe()
+        updateGameLeftLabel()
         if rightPMC and isAlive(rightPMC) and handParentedToGun then
             pcall(attachPMCToGun, rightPMC, weaponMesh)
         end
@@ -1313,6 +1757,10 @@ local function doStereoBody()
 
     -- IK modes: the weapon's right-hand offset (the gun proxy in hands.lua uses the same values)
     syncIKRightOffset()
+
+    -- The game's own left grip: measured while the game aims (fills a blank LH socket when the hand is on it)
+    local okProbe, errProbe = pcall(probeGameLeft, pawn, weaponMesh)
+    if not okProbe then print("[two_handed] game left grip probe: " .. tostring(errProbe)) releaseBodyBones("probe") end
 
     -- Two-handing
     if configui.getValue("twoHandEnabled") == false or getLHSocket() == "" then
@@ -1349,6 +1797,7 @@ local function doStereoBody()
             local okPivot, err = pcall(applyPivot)
             if not okPivot then print("[two_handed] pivot: " .. tostring(err)) end
         end
+        holdGameLeftGlove()
         applyLeftPose()
     end
 end

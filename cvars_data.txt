@@ -1,1 +1,2 @@
+Engine_r.AmbientOcclusionLevels=1
 Renderer_r.TonemapperGamma=1.650000

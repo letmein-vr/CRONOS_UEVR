@@ -840,7 +840,17 @@ uevr.sdk.callbacks.on_post_engine_tick(function(engine, delta)
         end
     end
 
-    local shouldBeInCutscene = isCinematic or isWallWalking
+    -- Ladders keep the pawn as view target (no CineCamera), but the climb is a scripted
+    -- traversal like ducking through gaps: CharMoveComp is MOVE_Custom (6), custom mode 1.
+    local isOnLadder = false
+    if pawn ~= nil then
+        pcall(function()
+            local cm = pawn.CharacterMovement
+            isOnLadder = cm ~= nil and cm.MovementMode == 6 and cm.CustomMovementMode == 1
+        end)
+    end
+
+    local shouldBeInCutscene = isCinematic or isWallWalking or isOnLadder
 
     if shouldBeInCutscene ~= inCutscene then
         if shouldBeInCutscene then

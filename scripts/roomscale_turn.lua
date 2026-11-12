@@ -71,7 +71,14 @@ local function isCutscene(pc, pawn)
         local ww = pawn.WallWalkComponent
         return ww ~= nil and ww["isEnabled?"] == true
     end)
-    return ok2 and wallWalk
+    if ok2 and wallWalk then return true end
+
+    -- Ladder climb: MOVE_Custom (6) with custom mode 1 (same rule as hands.lua)
+    local ok3, ladder = pcall(function()
+        local cm = pawn.CharacterMovement
+        return cm ~= nil and cm.MovementMode == 6 and cm.CustomMovementMode == 1
+    end)
+    return ok3 and ladder
 end
 
 -- ─── Throwable aiming ───

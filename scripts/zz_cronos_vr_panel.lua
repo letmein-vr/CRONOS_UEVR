@@ -20,15 +20,23 @@ table.sort(sections, function(a, b) return (a.order or 99) < (b.order or 99) end
 -- ids that STAY in the main panel (everything else of that section goes to dev). Sections not listed stay
 -- entirely in the main panel.
 local DEV_RULES = {
-    ["Hands"]             = { "hands_mode", "hands_mode_status" },
-    ["Two-Handed Aiming"] = { "twoHandEnabled", "lhGlide", "th_grab_button", "th_suppress_grab", "th_snap_left_hand" },
-    ["Weapon"]            = true,
+    ["Hands"]                = { "hands_mode", "hands_mode_status" },
+    ["Two-Handed Aiming"]    = { "twoHandEnabled", "th_grab_button" },
+    ["Weapon Recoil"]        = { "cr_recoil_enabled" },
+    ["Flashlight Spotlight"] = { "flashlight_mode" },
+    ["Weapon Reticule"]      = { "enable3DReticle" },
+    ["Roomscale"]            = true,
+    ["Weapon"]               = true,
+    ["Melee"]                = true,
 }
 
 -- Sections whose main part is shown without a collapsible header, together at the top of the panel
 local FLAT_SECTIONS = {
-    ["Hands"]             = true,
-    ["Two-Handed Aiming"] = true,
+    ["Hands"]                = true,
+    ["Two-Handed Aiming"]    = true,
+    ["Weapon Recoil"]        = true,
+    ["Flashlight Spotlight"] = true,
+    ["Weapon Reticule"]      = true,
 }
 
 local function splitSection(section)
