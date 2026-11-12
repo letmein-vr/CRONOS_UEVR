@@ -1,6 +1,6 @@
 # Cronos: The New Dawn – UEVR VR Profile
 
-A full motion-controller VR conversion of Cronos: The New Dawn for UEVR, with visible hands or full IK arms, guns that shoot where you point them, two-handed aiming, roomscale turning, a hand-held flashlight, punch melee and trap mines aimed with your hand. Special thanks to praydog, jbusfield (for his libs framework), DJ and Keyser-Soze!
+A full motion-controller VR conversion of Cronos: The New Dawn for UEVR, with visible hands or full IK arms, guns that shoot where you point them, two-handed aiming, roomscale turning, a hand-held flashlight, punch melee and trap mines aimed with your hand. Special thanks to praydog, jbusfield (for his libs framework, HUD inspiration), Lukasblaster (HUD inspiration) DJ and Keyser-Soze!
 
 ![Cronos VR](screenshots/cronosvr.png)
 
