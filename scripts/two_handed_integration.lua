@@ -471,6 +471,11 @@ local function isHeadLight()
     return configui.getValue("flashlight_mode") == 2
 end
 
+-- true while a right grip press would toggle the arm flashlight (holsters.lua leaves that press alone)
+_G.cronosRightGripIsFlashlight = function()
+    return not isHeadLight() and flashZoneOverlapping
+end
+
 -- Saved per weapon. GEOMETRY ids (the weapon's own values) fall back to their default when a weapon has none;
 -- the flashlight toggle zone ids keep the previous weapon's value instead.
 local GEOMETRY_DEFAULTS = {

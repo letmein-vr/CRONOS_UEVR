@@ -35,6 +35,29 @@
     "hlZoneX": 0.0,
     "hlZoneY": 0.0,
     "hlZoneZ": 0.0,
+    "hz_enabled": true,
+    "hz_haptic": true,
+    "hz_lhip": [
+        0.0,
+        -22.0,
+        -65.0
+    ],
+    "hz_lsh": [
+        -12.0,
+        -20.0,
+        -10.0
+    ],
+    "hz_rhip": [
+        0.0,
+        22.0,
+        -65.0
+    ],
+    "hz_rsh": [
+        -12.0,
+        20.0,
+        -10.0
+    ],
+    "hz_size": 16.0,
     "ikFlOffX": 29.75,
     "ikFlOffY": 19.25,
     "ikFlOffZ": -25.75,
@@ -104,5 +127,7 @@
     "th_show_markers": false,
     "th_snap_left_hand": true,
     "th_suppress_grab": true,
+    "tut_gesture": true,
+    "tut_pause": true,
     "twoHandEnabled": true
 }

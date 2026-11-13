@@ -270,6 +270,8 @@ local cachedSpotLight      = nil
 local spotLightSearchTime  = 0
 local SPOTLIGHT_CLASS_NAME = "Class /Script/Engine.SpotLightComponent"
 local inCutscene           = false  -- shared across both tick callbacks
+-- cutscenes, vents, gaps, wall walking and ladders (read by vr_tutorial.lua's open gesture gate)
+_G.cronosIsCutscene = function() return inCutscene end
 
 -- Flashlight mode (combo in the "Flashlight Spotlight" section, two_handed_integration.lua):
 -- 1 = on the left arm (mesh on the arm, spotlight on the left controller, slOff*/slRot* per weapon),

@@ -93,6 +93,16 @@ Usage
         example:
             ui.removeViewportWidget(myWidget)
 
+    ui.ignoreWidget(widget) - UI state skips this widget while it is in the viewport, so it never matches a
+        widget list entry, fires widget change callbacks or gets that entry's layout. Use for widgets a mod
+        creates from a borrowed game widget class
+        example:
+            ui.ignoreWidget(myWidget)
+
+    ui.unignoreWidget(widget) - stops ignoring a widget passed to ui.ignoreWidget
+        example:
+            ui.unignoreWidget(myWidget)
+
     ui.registerWidgetChangeCallback(widgetName, func) - registers a callback for when specific high level 
         viewport widgets become active/inactive. The widgetName can be found in the UI interface list.
         Callback receives (active, widget). widget is the live viewport instance when active, else nil.
@@ -185,6 +195,8 @@ local isInMotionSicknessCausingScene = false
 
 local currentWidgetViewportState = {}
 local currentCustomViewportWidgets = {}
+-- Keyed by address: GetAllWidgetsOfClass can return a different Lua wrapper for the same widget each update
+local ignoredWidgets = {}
 
 --In some games widgets will act like they are active even though they are not actually open
 --Set this to true to require that the widget's GetOpenState() returns 0 (open) for it to be considered active
@@ -507,7 +519,7 @@ local function updateUIState()
 
         for index, widget in pairs(foundWidgets) do
             --if widget:IsInViewport() then --check not really needed since GetAllWidgetsOfClass with the last param true should only return viewport widgets.also currentCustomViewportWidgets might not be in viewport
-            if requireWidgetOpenState == false or (widget.GetOpenState ~= nil and widget:GetOpenState() == 0) then
+            if ignoredWidgets[widget:get_address()] == nil and (requireWidgetOpenState == false or (widget.GetOpenState ~= nil and widget:GetOpenState() == 0)) then
                 if requireWidgetVisibility == false or widget:GetVisibility() == 0 or widget:GetVisibility() == 3 or widget:GetVisibility() == 4 then -- (widget.IsVisible ~= nil and widget:IsVisible()) then
                     --get the widget data from the configurations
                     local id = widget:get_class():get_full_name()
@@ -688,6 +700,16 @@ function M.removeViewportWidget(widget)
     if index ~= nil then
         table.remove(currentCustomViewportWidgets, index)
     end
+end
+
+function M.ignoreWidget(widget)
+    if uevrUtils.getValid(widget) == nil then return end
+    ignoredWidgets[widget:get_address()] = true
+end
+
+function M.unignoreWidget(widget)
+    if widget == nil then return end
+    ignoredWidgets[widget:get_address()] = nil
 end
 
 function M.getConfigurationWidgets(options)

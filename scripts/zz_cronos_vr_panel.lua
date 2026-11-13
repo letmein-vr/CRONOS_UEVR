@@ -25,6 +25,7 @@ local DEV_RULES = {
     ["Weapon Recoil"]        = { "cr_recoil_enabled" },
     ["Flashlight Spotlight"] = { "flashlight_mode" },
     ["Weapon Reticule"]      = { "enable3DReticle" },
+    ["Holsters"]             = { "hz_enabled" },
     ["Roomscale"]            = true,
     ["Weapon"]               = true,
     ["Melee"]                = true,
@@ -38,6 +39,7 @@ local FLAT_SECTIONS = {
     ["Immersive HUD"]        = true,
     ["Flashlight Spotlight"] = true,
     ["Weapon Reticule"]      = true,
+    ["Holsters"]             = true,
 }
 
 local function splitSection(section)
