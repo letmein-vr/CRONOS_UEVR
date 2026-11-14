@@ -3,8 +3,10 @@
 -- Pages: data/tutorial/intro.png + 1.png .. N.png (counted at runtime), icons data/tutorial/buttons/. They are rendered
 -- from the Cronos art by UnrealVRMod\0. Cronos Tutorial\make_pages.ps1.
 --
---   * Startup (1.7): shown at the first level of every start until the player closes it (B, or the open gesture while
---     the intro shows: gestureClosesIntro), finishes it ("Done" on the last page) or turns on "Hide at startup" (Y).
+--   * Startup (1.7): shown when gameplay is first reached (never in the main menu, see inGameplay), unless the panel
+--     option "Show it when gameplay starts" (tut_startup) is off, at every start until the player closes it once
+--     (B or the gesture). After that only the gesture opens it, in any session. Also stops when the player finishes
+--     it ("Done" on the last page) or turns on "Hide at startup" (Y).
 --     All intro buttons work at once (the old forced gesture wait is gone). data/tutorial_state.json remembers that,
 --     the gesture and the last page. It is never shipped, and the launcher no longer carries it over, so every fresh
 --     install or launcher update shows the tutorial again.
@@ -13,7 +15,8 @@
 --     held when the hand passes the eyes never opens it. Not during cutscenes / vents / ladders / wall walking, while
 --     two-handing, or while the game is paused or shows a mouse cursor (menus). A refused pull reaches the game as usual.
 --   * While open: every button is kept from the game and the other scripts (A next / start / done, X back, B close,
---     Y hide at startup) and the game is paused (panel option).
+--     Y hide at startup) and the game is paused (panel option). The open gesture closes it again on any page
+--     (gestureCloses), the same as B.
 --   * UI placement: Cronos keeps UEVR's UI head-locked (config UI_FollowView=true, offset right/down for the HUD), and
 --     libs/ui.lua is not set up in this profile, so the lib's ui.lua view lock is off (lockView = false: clearing it
 --     would turn UEVR's follow-view off for good). A world-locked page would also need a recenter, which snaps the view
@@ -30,6 +33,7 @@ local tutorial = require('libs/tutorial')
 _G.CRONOS_SECTIONS = _G.CRONOS_SECTIONS or {}
 table.insert(_G.CRONOS_SECTIONS, { order = 6.7, label = "VR Tutorial", layout = {
 	{ widgetType = "button", id = "tut_show", label = "Show the VR tutorial", size = {220, 24} },
+	{ widgetType = "checkbox", id = "tut_startup", label = "Show it when gameplay starts (until closed once)", initialValue = true },
 	{ widgetType = "checkbox", id = "tut_gesture", label = "Open it with the left trigger at your eyes", initialValue = true },
 	{ widgetType = "checkbox", id = "tut_pause", label = "Pause the game while it is open", initialValue = true },
 	{ widgetType = "button", id = "tut_reset", label = "Show it again at the next start", size = {260, 24} },
@@ -106,6 +110,8 @@ end
 
 -- true while the tutorial on screen is the automatic startup one: closing that one stops the startup show
 local startupShow = false
+-- true until the startup tutorial has been shown in gameplay this session (see inGameplay below)
+local startupPending = false
 
 local t = tutorial.new({
 	imageSize = 1536,
@@ -113,22 +119,69 @@ local t = tutorial.new({
 	lockView = false,
 	disableControllerMouse = false,
 	buttons = { start = "A", next = "A", done = "A", back = "X", close = "B", skip = "B", hideAtStartup = "Y" },
-	navigation = {
-		intro = { { action = "hideAtStartup", align = "left" },
-		          { action = "close", label = "Close (or the gesture)", align = "right" },
-		          { action = "start", align = "right" } },
-	},
+	labels = { close = "Close (or gesture)" },
 	openGestureCondition = gestureAllowed,
-	gestureClosesIntro = true,
+	gestureCloses = true, -- the open gesture is a toggle: it closes the tutorial on any page too
 	pageOffset = pageOffset,
 	onClose = function(self, reason)
-		-- a level change closes it without the player choosing to: it shows again at the next start
-		if reason == "level_change" then return end
+		if reason == "level_change" then
+			-- closed without the player choosing to: the startup tutorial comes back in the next gameplay
+			if startupShow then startupPending = true end
+			startupShow = false
+			return
+		end
 		if startupShow and (reason == "closed" or reason == "skipped") then self:setCompleted(true) end
 		startupShow = false
 	end,
 })
-startupShow = t:showOnce()
+
+-- The startup tutorial waits for real gameplay, never the main menu (which also has a pawn and the VR controllers):
+--   * the pawn is the game's play character (native ASHCharacterPlay, CronosCharacterPlay_BP_C in game)
+--   * the player controller is the play controller (native ASHPlayerControllerPlay, SHPlayerControllerPlay_BP_C)
+--   * the world's game mode is not the main menu's (native AMainMenuGameMode)
+--   * the motion controller components exist (libs/gestures reads the cached left controller and HMD for the gesture)
+--   * no cutscene / vent / ladder, not paused, no menu mouse cursor
+-- Classes are matched by name up the class chain, so the /Script/ module they live in does not matter.
+local controllers = require('libs/controllers')
+
+local function isA(object, className)
+	if object == nil then return false end
+	local class = object:get_class()
+	while class ~= nil do
+		if class:get_fname():to_string() == className then return true end
+		class = class:get_super_struct()
+	end
+	return false
+end
+
+local function inGameplay()
+	local ok, result = pcall(function()
+		if not isA(uevr.api:get_local_pawn(0), "SHCharacterPlay") then return false end
+		if not isA(uevr.api:get_player_controller(0), "SHPlayerControllerPlay") then return false end
+		local world = uevrUtils.get_world()
+		if world == nil or isA(world.AuthorityGameMode, "MainMenuGameMode") then return false end
+		if not controllers.controllerExists(Handed.Left) or not controllers.hmdControllerExists() then return false end
+		if call(_G.cronosIsCutscene) then return false end
+		return not isPausedOrMenu()
+	end)
+	return ok and result == true
+end
+
+startupPending = not t:isCompleted()
+local STARTUP_POLL_S = 0.5
+local startupPollTimer = 0
+uevrUtils.registerPreEngineTickCallback(function(engine, delta)
+	if not startupPending or t:isOpen() then return end
+	startupPollTimer = startupPollTimer + (tonumber(delta) or 0)
+	if startupPollTimer < STARTUP_POLL_S then return end
+	startupPollTimer = 0
+	if t:isCompleted() then startupPending = false return end
+	if not enabled("tut_startup") then return end -- panel option off: keep waiting in case it is turned back on
+	if inGameplay() then
+		startupPending = false
+		startupShow = t:showOnce()
+	end
+end)
 
 local function updateStatus()
 	configui.setLabel("tut_status", t:isCompleted() and "Shown at start: no (closed, finished or hidden)" or "Shown at start: yes")

@@ -104,8 +104,11 @@ Usage
 		                         (the trigger pull then reaches the game and other scripts as usual). Asked only once
 		                         the gesture is detected. Default nil, always allowed. (Hellraiser addition)
 		openGesturePage        - page it opens when no step is saved. Default 1, skipping the intro
-		gestureClosesIntro     - true makes the open gesture close the tutorial while its intro is showing (reason
-		                         "closed"); it also counts as the gesture being done. Default false. (Cronos addition)
+		gestureCloses          - true makes the open gesture also close the open tutorial, on any page (the same as
+		                         the close action: "done" on the last step, otherwise "closed"). The pull that opened
+		                         it never closes it: the hand is ignored until its trigger is released. It also counts
+		                         as the gesture being done. Default false. (Cronos addition)
+		gestureClosesIntro     - the same, but only while the intro is showing. Default false. (Cronos addition)
 		interactionPrompt      - text the waiting intro shows. Default "Try the gesture now"
 		interactionColor       - its color. Default "#4ADE80FF"
 		rememberPage           - saves the current step in tutorial_state.json. The open gesture and Start continue
@@ -247,6 +250,7 @@ local DEFAULT_OPTIONS = {
 	openGesture = "EYESCRATCH",
 	openGestureHand = Handed.Left,
 	openGesturePage = 1,
+	gestureCloses = false,
 	gestureClosesIntro = false,
 	interactionPrompt = "Try the gesture now",
 	interactionColor = "#4ADE80FF",
@@ -967,13 +971,14 @@ local function captureInput(retval, userIndex, state)
 	end
 end
 
--- An open intro that the open gesture closes (gestureClosesIntro)
-local function gestureClosesIntro(tutorial)
-	return tutorial.host ~= nil and tutorial.options.gestureClosesIntro == true and tutorial.page == 0
+-- An open tutorial that the open gesture closes (gestureCloses, or gestureClosesIntro while the intro shows)
+local function gestureClosesOpen(tutorial)
+	if tutorial.host == nil then return false end
+	return tutorial.options.gestureCloses == true or (tutorial.options.gestureClosesIntro == true and tutorial.page == 0)
 end
 
--- Detects the open gesture for closed tutorials, for an intro waiting for it and for an intro it closes. Runs before
--- captureInput, which hides the controller from everything after it while a tutorial is open
+-- Detects the open gesture for closed tutorials, for an intro waiting for it and for an open tutorial it closes. Runs
+-- before captureInput, which hides the controller from everything after it while a tutorial is open
 local function captureGesture(retval, userIndex, state)
 	if not isVRSlot(userIndex) then return end
 	local gamepad = state.Gamepad
@@ -990,7 +995,7 @@ local function captureGesture(retval, userIndex, state)
 	end
 	if pendingGesture ~= nil then return end
 	for _, tutorial in ipairs(gestureTutorials) do
-		if tutorial.host == nil or tutorial:isAwaitingInteraction() or gestureClosesIntro(tutorial) then
+		if tutorial.host == nil or tutorial:isAwaitingInteraction() or gestureClosesOpen(tutorial) then
 			if gestures == nil then gestures = require('libs/gestures') end
 			local id = gestures.Gesture[tutorial.options.openGesture]
 			local hand = tutorial.options.openGestureHand
@@ -1026,9 +1031,9 @@ local function runPendingAction()
 			tutorial:completeInteraction()
 			tutorial:show(resumePage(tutorial, tutorial.options.openGesturePage))
 		else
-			local closeIt = gestureClosesIntro(tutorial)
+			local closeIt = gestureClosesOpen(tutorial)
 			tutorial:completeInteraction()
-			if closeIt then tutorial:close("closed") end
+			if closeIt then tutorial:runAction("close") end
 		end
 	end
 	if pendingTutorial == nil then return end
