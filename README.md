@@ -8,7 +8,7 @@ A full motion-controller VR conversion of Cronos: The New Dawn for UEVR, with vi
 
 - **Easiest:** download `CronosVR_Launcher.exe` from the [latest release](https://github.com/letmein-vr/CRONOS_UEVR/releases/latest). It installs the profile and a matching UEVR build, starts the game and injects VR for you (see [Installation](#installation)).
 - Manual install: the latest [UEVR nightly](https://github.com/praydog/UEVR-nightly/releases) is required, plus the profile from the [latest release](https://github.com/letmein-vr/CRONOS_UEVR/releases/latest).
-- **Known issue:** the Cronos game patch of 26 October 2026 breaks the in-game interaction prompts in VR (this happens with UEVR alone, with no profile loaded). Use the previous game version until UEVR or the game is updated.
+- **Interaction prompts on the latest game patch:** the current Cronos patch added a stereoscopic 3D display mode. In VR the game therefore switches its interaction prompts to 3D icons in the world, but ships without the widget they need, so with UEVR alone no prompts appear. Since 1.7 the profile supplies it (`cronos_3d_prompts.lua`), and the prompts float on the objects in 3D.
 
 ## Features
 
@@ -46,12 +46,13 @@ A full motion-controller VR conversion of Cronos: The New Dawn for UEVR, with vi
 
 - **First-person 6DOF** with the eye placed on the Traveler's head.
 - **Head-locked UI.** The HUD follows your view.
+- **3D interaction prompts.** Pick-up and use prompts float on the objects themselves, in 3D (on the latest game patch).
 - **Immersive HUD (optional).** Health on your left hand, ammo on the gun, the rest of the HUD in view. Off by default; switch it on in the panel.
 - **Spatial audio from the headset.** Sound is heard from your head position.
 
 ### VR tutorial
 
-- **In-game tutorial.** Picture pages that explain the VR controls, shown once when you first reach gameplay. Bring your left controller up to your eyes and pull the left trigger to open it again at any time; the game pauses while it is open. A = next, X = back, B = close, Y = don't show at startup.
+- **In-game tutorial.** Picture pages that explain the VR controls. It opens at every start until you close it (B, or the eye gesture below while the first page shows), finish it, or press Y (don't show at startup); a fresh install or launcher update shows it again. Bring your left controller up to your eyes and pull the left trigger to open it again at any time; the game pauses while it is open. A = start / next, X = back, B = close, Y = don't show at startup.
 
 ## Controls
 
@@ -81,7 +82,7 @@ The D-pad is mapped to the left controller (HMD + left stick); you can change th
 3. Press **LAUNCH**. The launcher installs or updates the profile, saves your options, starts the game through Steam and injects UEVR once the game window is up (after a short countdown; **Inject now** skips it).
 
 Good to know:
-- An existing profile is backed up to `%APPDATA%\UnrealVRMod\Backups` before an update, and your panel settings and tutorial progress are carried over.
+- An existing profile is backed up to `%APPDATA%\UnrealVRMod\Backups` before an update, and your panel settings are carried over. The VR tutorial pops up again after an update, so you see what's new; close it once and it stays closed.
 - The launcher checks GitHub for newer profile releases and offers them with one click.
 - If the game is already running without VR, the button becomes **INJECT VR**.
 - Advanced tab: inject delay, closing the launcher after injecting, automatic profile updates, starting the game exe directly instead of Steam.
@@ -120,6 +121,7 @@ Built on jbusfield's shared uevrlib Lua framework (with its `uevr_utils.dll` and
 - `roomscale_turn.lua` – Cronos looks through its own view component rather than the controller rotation, so this script feeds your head direction into it, turns the body with you, keeps the image from turning twice, recentres on cutscene entry and aims trap mines with the right controller.
 - `holsters.lua` – the body holster zones (boxes around the head, facing where you look) that turn a right grip press into the matching d-pad weapon slot.
 - `vr_tutorial.lua` – the VR tutorial (jbusfield's tutorial lib from his Atomic Heart profile), pages in `data/tutorial/`.
+- `cronos_3d_prompts.lua` – the latest game patch builds world-space interaction prompts whenever stereo rendering is on (always under UEVR) but leaves `CronosUISettings.InteractionIconWidget3DClass` empty; this fills it with the game's own `SHInteractionIconWidget3D_BP` at startup, only while it is empty.
 - `hmd_audio.lua` – audio listener on the headset.
 - `zz_cronos_vr_panel.lua` – builds the single Cronos VR panel from the other scripts' settings.
 

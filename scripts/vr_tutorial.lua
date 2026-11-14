@@ -3,9 +3,11 @@
 -- Pages: data/tutorial/intro.png + 1.png .. N.png (counted at runtime), icons data/tutorial/buttons/. They are rendered
 -- from the Cronos art by UnrealVRMod\0. Cronos Tutorial\make_pages.ps1.
 --
---   * First start: shown once at the first level, and the intro waits until the player has done the open gesture once
---     (forceInteractionAtStartup). Finishing it ("Done" on the last page) or "Hide at startup" stops the automatic
---     show; data/tutorial_state.json remembers that, the gesture and the last page.
+--   * Startup (1.7): shown at the first level of every start until the player closes it (B, or the open gesture while
+--     the intro shows: gestureClosesIntro), finishes it ("Done" on the last page) or turns on "Hide at startup" (Y).
+--     All intro buttons work at once (the old forced gesture wait is gone). data/tutorial_state.json remembers that,
+--     the gesture and the last page. It is never shipped, and the launcher no longer carries it over, so every fresh
+--     install or launcher update shows the tutorial again.
 --   * Any time: left controller up to the eyes + left trigger opens it again at the saved page (libs/gestures
 --     EYESCRATCH: within 15 cm in front of the HMD). The trigger has to be PULLED there: an aim (LT) that is already
 --     held when the hand passes the eyes never opens it. Not during cutscenes / vents / ladders / wall walking, while
@@ -102,20 +104,34 @@ local function pageOffset()
 	return x or 0, y or 0
 end
 
+-- true while the tutorial on screen is the automatic startup one: closing that one stops the startup show
+local startupShow = false
+
 local t = tutorial.new({
 	imageSize = 1536,
 	pauseGame = enabled("tut_pause"),
 	lockView = false,
 	disableControllerMouse = false,
 	buttons = { start = "A", next = "A", done = "A", back = "X", close = "B", skip = "B", hideAtStartup = "Y" },
+	navigation = {
+		intro = { { action = "hideAtStartup", align = "left" },
+		          { action = "close", label = "Close (or the gesture)", align = "right" },
+		          { action = "start", align = "right" } },
+	},
 	openGestureCondition = gestureAllowed,
+	gestureClosesIntro = true,
 	pageOffset = pageOffset,
+	onClose = function(self, reason)
+		-- a level change closes it without the player choosing to: it shows again at the next start
+		if reason == "level_change" then return end
+		if startupShow and (reason == "closed" or reason == "skipped") then self:setCompleted(true) end
+		startupShow = false
+	end,
 })
-t:forceInteractionAtStartup(true)
-t:showOnce()
+startupShow = t:showOnce()
 
 local function updateStatus()
-	configui.setLabel("tut_status", t:isCompleted() and "Shown at start: no (finished or hidden)" or "Shown at start: yes")
+	configui.setLabel("tut_status", t:isCompleted() and "Shown at start: no (closed, finished or hidden)" or "Shown at start: yes")
 end
 
 -- Panel buttons run while UEVR draws its overlay: widgets are made on the next engine tick instead
@@ -129,8 +145,10 @@ uevrUtils.registerPreEngineTickCallback(function()
 	local action = pending
 	pending = nil
 	if action == "show" then
+		startupShow = false
 		t:show(t:getSavedPage() or 1)
 	elseif action == "reset" then
+		startupShow = false
 		t:resetCompleted()
 		t:resetInteraction()
 		t:resetSavedPage()
