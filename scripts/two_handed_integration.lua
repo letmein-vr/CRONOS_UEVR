@@ -1782,8 +1782,8 @@ local function doStereoBody()
     setMarker("grip", gripPoint)
 
     local dist = distance(leftHand:K2_GetComponentLocation(), gripPoint)
-    local force = configui.getValue("forceTwoHand") == true
-    inGrabZone = dist <= (configui.getValue("th_grab_radius") or 16)
+    local force = configui.getValue("forceTwoHand") == true and not _G.cronosManualReloadBusy
+    inGrabZone = dist <= (configui.getValue("th_grab_radius") or 16) and not _G.cronosManualReloadBusy
 
     if not active then
         if not punchAnimationActive and (force or (grabDown and inGrabZone)) then
@@ -1870,6 +1870,9 @@ uevrUtils.registerOnPreInputGetStateCallback(function(retval, user_index, state)
     else
         grabDown = uevrUtils.isButtonPressed(state, BTN_LEFT_GRIP)
     end
+    -- manual_reload.lua owns the left hand while a manual reload runs (magazine from the hip, insert, rack): no grab,
+    -- and an active two-hand hold lets go
+    if _G.cronosManualReloadBusy then grabDown = false end
     -- any left button edge while two-handing triggers hand-animation lerps: re-assert the grip pose after them
     local leftButtons = (uevrUtils.isButtonPressed(state, BTN_LEFT_GRIP) and 1 or 0) + (((state.Gamepad.bLeftTrigger or 0) > 100) and 2 or 0)
     if active and leftButtons ~= lastLeftButtons then

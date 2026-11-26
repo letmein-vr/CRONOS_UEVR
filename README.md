@@ -29,7 +29,10 @@ A full motion-controller VR conversion of Cronos: The New Dawn for UEVR, with vi
 - **Weapon reticule.** The game's reticle for the current weapon mode is shown in the world along the barrel, exactly where shots go (also while two-handing). It is white, keeps the same apparent size at any distance, and its brightness, size and maximum distance are adjustable.
 - **Weapon recoil.** Every shot kicks the gun in your hand (on/off in the panel).
 - **Holsters.** Reach to a spot on your body and press the right grip to switch weapons: right hip = slot 1, right shoulder = slot 2, left shoulder = slot 3, left hip = slot 4. A short buzz tells you your hand is on a holster. The d-pad still selects slots too.
-- **Reloading** works as in the game, with the gun staying in your hand.
+- **Manual reload.** Reloading is done by hand, for every weapon mode. Press reload (or run dry): the old magazine drops out, a new one waits at your left hip. Take it with the left grip and push it into the gun; a glowing dot shows where it goes (on/off in the panel).
+  - Handgun and Auto Gun: cartridge. Smart Gun and Heavy Rifle: the slide magazine, pushed back onto the gun from the front. Spread Gun and Double Barrel: shell by shell into the loading window under the gun (pull the trigger to stop early). Annihilator: the bolt, laid in at the back.
+  - Each mode learns how it reloads from the game's own reload animation (the magazine, the grip and finger pose, the insert stroke, the parts that open), so the left hand holds it the way the game does. The learned data ships with the profile; a mode it has not seen yet reloads normally once and then learns it.
+  - The ammo is taken from your reserve as in the game.
 - **Punch melee.** Punch forward with the right controller to trigger the punch attack. The punch speed needed is adjustable.
 - **Trap mines from the hand.** Hold the left grip to bring up a trap mine, point the right controller where you want it and release; the arc and the throw follow the controller.
 
@@ -64,6 +67,7 @@ A full motion-controller VR conversion of Cronos: The New Dawn for UEVR, with vi
 | Two-hand a gun | Left hand to the gun's fore-grip, hold left grip (or left trigger, see the panel) |
 | Punch | Punch forward with the right controller |
 | Trap mine | Hold left grip, aim with the right controller, release to throw |
+| Manual reload | Reload as usual, take the magazine / shell / bolt from your left hip with the left grip, push it into the gun |
 | Switch weapon (holsters) | Right grip at the right hip (1), right shoulder (2), left shoulder (3) or left hip (4) |
 | Flashlight on / off | Head-mounted: left controller to your head, left grip. On the arm: right hand to the left-arm flashlight, right grip |
 | VR tutorial | Left controller to your eyes, pull the left trigger |
@@ -108,6 +112,7 @@ Everything is adjustable in the UEVR overlay, without editing files. All setting
 - **VR Tutorial** – show it now, the eye gesture on/off, pausing on/off, and showing it again at the next start.
 - **Weapon Reticule** – on/off, brightness, max distance, constant apparent size, size.
 - **Melee** – the punch speed needed to trigger a punch.
+- **Manual Reload** – on/off, racking on/off and the well dot on/off (hip pouch position, grab and insert distances, glide times, finger pose, dot size / colour, haptics and per-weapon hold / seat offsets under Dev Config; re-learning a weapon mode under Manual Reload - Analysis).
 - **Dev Config** – per-weapon grip points and grab radii, right- and left-hand offsets for both hand modes, left-hand pose capture, debug spheres, the IK flashlight position, the flashlight toggle zone and gun on controller. Weapon values are saved per weapon.
 
 Weapon and flashlight attachment offsets are in the separate **Attachments Config** panel.
@@ -122,6 +127,8 @@ Built on jbusfield's shared uevrlib Lua framework (with its `uevr_utils.dll` and
 - `holsters.lua` – the body holster zones (boxes around the head, facing where you look) that turn a right grip press into the matching d-pad weapon slot.
 - `vr_tutorial.lua` – the VR tutorial (jbusfield's tutorial lib from his Atomic Heart profile), pages in `data/tutorial/`.
 - `cronos_3d_prompts.lua` – the latest game patch builds world-space interaction prompts whenever stereo rendering is on (always under UEVR) but leaves `CronosUISettings.InteractionIconWidget3DClass` empty; this fills it with the game's own `SHInteractionIconWidget3D_BP` at startup, only while it is empty.
+- `reload_analyzer.lua` + `cronos/reload_learn.lua` – manual reload, step 1: records the first native reload of each weapon mode (keyed by mode + mesh, e.g. `GravityGun|SK_HandGun_01`: the Multi-Mode Gun is one mesh whose asset changes per mode) and learns the magazine bone, grip, finger pose, seat, insert stroke and opening parts into `data/cronos_manual_reload_auto.json`. Modes with no carried part in their reload (shells, the Annihilator's bolt) use the gun's own round bone.
+- `manual_reload.lua` – manual reload, step 2: stops the game's reload animation, shows the magazine as an isolated copy of the gun's mesh (falling, at the hip, in the hand), drives the gun's own bones for the insert, and fills the magazine with the game's own `ReloadAddAmmo` (from the reserve).
 - `hmd_audio.lua` – audio listener on the headset.
 - `zz_cronos_vr_panel.lua` – builds the single Cronos VR panel from the other scripts' settings.
 
